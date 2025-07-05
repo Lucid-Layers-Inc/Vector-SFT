@@ -12,6 +12,8 @@ from peft import PeftModel
 from peft import get_peft_model_state_dict
 from safetensors.torch import save_file
 
+from transformers import LlamaForCausalLM
+
 class ModelWithAuxiliaryHead(nn.Module):
     
     def __init__(
@@ -57,15 +59,24 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.lm_head = lm_head
         
         # hook registration
-        Llama_with_LoRA = self.base_model.get_base_model()
+        llama_with_lora = self.base_model.get_base_model()
+        
+        self.k_layer_hidden_state = None
 
         def hook_fn(module, inp, out):
-            if not getattr(module, "_hooked_done", False):
-                module._captured_hidden = out[0]
-                module._hooked_done = True
-                
-        self._hook_handle = Llama_with_LoRA.model.layers[self.k].register_forward_hook(hook_fn)
+            self.k_layer_hidden_state = out[0]
+                        
+        llama_with_lora.model.layers[self.k].register_forward_hook(hook_fn)
       
+    def get_layer(self):
+        layer = self.base_model.get_base_model().model.layers[self.k]
+        if hasattr(layer, "_hooked_done"):
+            layer._hooked_done = False
+        if hasattr(layer, "_captured_hidden"):
+            del layer._captured_hidden
+        
+        return layer
+    
     def forward(
             self,
             input_ids: torch.LongTensor = None,
@@ -78,11 +89,7 @@ class ModelWithAuxiliaryHead(nn.Module):
             **kwargs
         ):
         
-        layer = self.base_model.get_base_model().model.layers[self.k]
-        if hasattr(layer, "_hooked_done"):
-            layer._hooked_done = False
-        if hasattr(layer, "_captured_hidden"):
-            del layer._captured_hidden
+        layer = self.get_layer()
         
         # Get the original transformers model from the PeftModel wrapper. It contains the LoRA layers.
         modified_base_model = self.base_model.get_base_model() # debug_model_structure.py confirms that this contains lora
