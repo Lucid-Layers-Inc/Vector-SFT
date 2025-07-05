@@ -30,8 +30,5 @@ def main(config: str):
 
     trainer.train()
 
-    final_output_dir = experiment.train_args.output_dir
-    trainer.save_model(final_output_dir) 
-
 if __name__ == "__main__":
     fire.Fire(main)
