@@ -129,6 +129,7 @@ class VectorSFTTrainer(SFTTrainer):
                               num_samples=len(dataloader))
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
         
         # super()._save(output_dir, state_dict)
         self.model.save_pretrained(output_dir)
