@@ -9,12 +9,15 @@ from src.trainer import VectorSFTTrainer
 
 def main(config: str):
 
-    experiment = SFTExperiment(config)
+    checkpoint_path = "VectorSFT-checkpoints/checkpoint-1164" 
+    experiment = SFTExperiment(config, resume_from_checkpoint=checkpoint_path)
     experiment.setup_lora_and_auxiliary()
     data_collator = experiment.prepare_datasets()
-
     training_args = SFTConfig(**experiment.cfg.trainer)
 
+
+
+    experiment.task_init()
     trainer = VectorSFTTrainer(
         model=experiment.model,
         processing_class=experiment.tokenizer,
@@ -28,7 +31,7 @@ def main(config: str):
         ]
     )
 
-    trainer.train()
+    trainer.train(resume_from_checkpoint=checkpoint_path)
 
 if __name__ == "__main__":
     fire.Fire(main)

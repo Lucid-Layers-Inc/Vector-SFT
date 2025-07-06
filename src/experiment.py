@@ -2,11 +2,14 @@ from typing import List, Dict, Any
 import torch
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, PreTrainedTokenizer, PreTrainedModel
+import os
 
 from peft import LoraConfig, get_peft_model
 from src.model import ModelWithAuxiliaryHead
 from src.common.default import Experiment
 from omegaconf import OmegaConf
+from peft import PeftModel
+
 
 
 def create_labels(
@@ -98,9 +101,9 @@ class DatasetProcessor:
 class SFTExperiment(Experiment):
     
 
-    def __init__(self, config: str):
+    def __init__(self, config: str, resume_from_checkpoint: str = None):
         super().__init__(config)
-        self.task_init()
+        self.resume_from_checkpoint = resume_from_checkpoint
 
         self.base_model, self.tokenizer = self.prepare_model_and_tokenizer()
         self.dataset_processor = DatasetProcessor(self.tokenizer, self.cfg)
@@ -124,12 +127,21 @@ class SFTExperiment(Experiment):
         if lm_head is None:
             raise ValueError("Could not get output embeddings from the base model before applying PEFT.")
 
-        peft_params = OmegaConf.to_container(self.cfg.peft, resolve=True)
-        peft_config = LoraConfig(**peft_params)
-        self.lora_wrapped = get_peft_model(self.base_model, peft_config)
+        # Setup LoRA
+        if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
+            # Load LoRA from checkpoint
+            print(f"Loading LoRA weights from {self.resume_from_checkpoint}")
+            self.lora_wrapped = PeftModel.from_pretrained(self.base_model, self.resume_from_checkpoint, is_trainable=True)
+        else:
+            # Create new LoRA
+            print("Creating new LoRA configuration")
+            peft_params = OmegaConf.to_container(self.cfg.peft, resolve=True)
+            peft_config = LoraConfig(**peft_params)
+            self.lora_wrapped = get_peft_model(self.base_model, peft_config)
+        
         self.lora_wrapped.enable_input_require_grads()
 
-
+        # Create auxiliary head model
         self.model = ModelWithAuxiliaryHead(
             #config=self.lora_wrapped.config,
             base_model=self.lora_wrapped,
@@ -142,6 +154,11 @@ class SFTExperiment(Experiment):
             r=self.cfg.auxiliary.segments_rank,
             k=self.cfg.auxiliary.k,
             )
+        
+        # Load custom weights if resuming from checkpoint
+        if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
+            print(f"Loading custom weights from {self.resume_from_checkpoint}")
+            self.model.load_custom_weights(self.resume_from_checkpoint)
 
     def prepare_datasets(self) -> callable:
         """
