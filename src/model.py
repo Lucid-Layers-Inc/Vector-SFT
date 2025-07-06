@@ -222,25 +222,58 @@ class ModelWithAuxiliaryHead(nn.Module):
 
     def save_pretrained(self, save_directory: str):
         
-        print(f"Saving to {save_directory}...")
-        
-        os.makedirs(save_directory, exist_ok=True)
-
+        # Save the base model (handles both PEFT and base model states)
         self.base_model.save_pretrained(save_directory)
-        print("Peft Model saved locally succesfully.")
         
-    #    custom_weights_state_dict = {
-    #        "A_matrices": self.A_matrices,
-    #        "B_matrices": self.B_matrices,
-    #        "bias": self.bias,
-    #    }
-    #    torch.save(custom_weights_state_dict, os.path.join(save_directory, "auxiliary_head_weights.pt"))
-    #    self.config.save_pretrained(save_directory)
+        # Save custom weights
+        custom_state_dict = {
+            "A_matrices": self.A_matrices.cpu().clone(),
+            "B_matrices": self.B_matrices.cpu().clone(),
+            "bias": self.bias.cpu().clone(),
+        }
         
-    #    print("Saved succesfully.")
-  
-
-
+        custom_weights_filename = "custom_trained_weights.pt"
+        save_path = os.path.join(save_directory, custom_weights_filename)
+        try:
+            torch.save(custom_state_dict, save_path)
+            print(f"Custom weights saved to {save_path}")
+        except Exception as e:
+            print(f"Failed to save custom weights: {e}")
+            
+    def load_custom_weights(self, checkpoint_path: str):
+        """
+        Load custom weights (A_matrices, B_matrices, bias) from a checkpoint directory.
+        
+        Args:
+            checkpoint_path: Path to the checkpoint directory containing custom_trained_weights.pt
+        """
+        custom_weights_path = os.path.join(checkpoint_path, "custom_trained_weights.pt")
+        
+        if not os.path.exists(custom_weights_path):
+            print(f"Warning: Custom weights file not found at {custom_weights_path}")
+            return
+        
+        try:
+            custom_state_dict = torch.load(custom_weights_path, map_location=self.A_matrices.device)
+            
+            # Load A_matrices
+            if "A_matrices" in custom_state_dict:
+                self.A_matrices.data = custom_state_dict["A_matrices"].to(self.A_matrices.device)
+                print(f"Loaded A_matrices from {custom_weights_path}")
+            
+            # Load B_matrices
+            if "B_matrices" in custom_state_dict:
+                self.B_matrices.data = custom_state_dict["B_matrices"].to(self.B_matrices.device)
+                print(f"Loaded B_matrices from {custom_weights_path}")
+            
+            # Load bias
+            if "bias" in custom_state_dict:
+                self.bias.data = custom_state_dict["bias"].to(self.bias.device)
+                print(f"Loaded bias from {custom_weights_path}")
+                
+        except Exception as e:
+            print(f"Error loading custom weights: {e}")
+            raise e
 
     def get_input_embeddings(self):
         return self.base_model.get_input_embeddings()

@@ -1,9 +1,12 @@
 import os
+import json
+
 import torch
 import torch.nn as nn
 from trl import SFTTrainer
 from typing import Optional
 from transformers.trainer_utils import EvalLoopOutput
+from transformers.trainer import TrainerState
 from typing import List, Dict, Any
 
 class VectorSFTTrainer(SFTTrainer):
@@ -125,7 +128,43 @@ class VectorSFTTrainer(SFTTrainer):
                               metrics=metrics, 
                               num_samples=len(dataloader))
 
-    # def _save(self, output_dir: Optional[str] = None, state_dict=None):
+    def _save(self, output_dir: Optional[str] = None, state_dict=None):
         
-    #     super()._save(output_dir, state_dict)
-    #     self.model.save_pretrained(output_dir)
+        # super()._save(output_dir, state_dict)
+        self.model.save_pretrained(output_dir)
+        
+
+
+
+    def resume_trainer_only(self, checkpoint_path):
+        optimizer_path = os.path.join(checkpoint_path, "optimizer.pt")
+        if os.path.exists(optimizer_path):
+            optimizer_state = torch.load(optimizer_path, map_location="cpu")
+            self.optimizer.load_state_dict(optimizer_state)
+            print(f"Loaded optimizer state from {optimizer_path}")
+        else:
+            print(f"Warning: optimizer.pt not found in {checkpoint_path}")
+        
+        scheduler_path = os.path.join(checkpoint_path, "scheduler.pt")
+        if os.path.exists(scheduler_path):
+            scheduler_state = torch.load(scheduler_path, map_location="cpu")
+            self.lr_scheduler.load_state_dict(scheduler_state)
+            print(f"Loaded scheduler state from {scheduler_path}")
+        else:
+            print(f"Warning: scheduler.pt not found in {checkpoint_path}")
+        
+        trainer_state_path = os.path.join(checkpoint_path, "trainer_state.json")
+        if os.path.exists(trainer_state_path):
+            with open(trainer_state_path, "r") as f:
+                state_dict = json.load(f)
+            self.state = TrainerState(**state_dict)
+            print(f"Loaded trainer state from {trainer_state_path}")
+            print(f"Resuming from step {self.state.global_step}, epoch {self.state.epoch}")
+        else:
+            print(f"Warning: trainer_state.json not found in {checkpoint_path}")
+        
+        self._load_rng_state(checkpoint_path)
+    
+    def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
+        self.create_optimizer_and_scheduler(num_training_steps=self.args.max_steps)
+        self.resume_trainer_only(resume_from_checkpoint)
