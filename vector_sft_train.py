@@ -2,19 +2,21 @@ import fire
 
 from trl import SFTConfig
 
-from src.callbacks import ClearMLCallback, SaveCustomWeightsCallback
+from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback
 from src.experiment import SFTExperiment
 from src.trainer import VectorSFTTrainer
 
 
 def main(config: str):
 
-    checkpoint_path = "VectorSFT-checkpoints/checkpoint-1164" 
-    experiment = SFTExperiment(config, resume_from_checkpoint=checkpoint_path)
+    # checkpoint_path = "VectorSFT-checkpoints/checkpoint-1164" 
+    experiment = SFTExperiment(
+        config, 
+        # resume_from_checkpoint=checkpoint_path
+        )
     experiment.setup_lora_and_auxiliary()
     data_collator = experiment.prepare_datasets()
     training_args = SFTConfig(**experiment.cfg.trainer)
-
 
 
     experiment.task_init()
@@ -27,11 +29,13 @@ def main(config: str):
         data_collator=data_collator,
         callbacks=[
             ClearMLCallback(experiment.task),
-            SaveCustomWeightsCallback()
+            SaveCustomWeightsOnHubCallback(),
         ]
     )
 
-    trainer.train(resume_from_checkpoint=checkpoint_path)
+    trainer.train(
+        # resume_from_checkpoint=checkpoint_path
+    )
 
 if __name__ == "__main__":
     fire.Fire(main)

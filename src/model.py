@@ -1,18 +1,66 @@
+import os
+import math
+from typing import Optional
+
 import torch
 import torch.nn as nn
-from transformers import PreTrainedModel, PretrainedConfig
 from torch.nn import functional as F
-from transformers.modeling_outputs import CausalLMOutputWithPast
-from typing import Optional, Any
-import math
-import os
-from omegaconf import ListConfig
-from typing import Dict
-from peft import PeftModel
-from peft import get_peft_model_state_dict
-from safetensors.torch import save_file
+from transformers import PreTrainedModel
+
+
+class Translator(nn.Module):    
+    def __init__(self, num_segments, hidden_size, rank, model_dtype, N_max):
+        super().__init__()
+        
+        self.N_max = N_max
+        self.num_segments = num_segments
+        
+        self.A_matrices = nn.Parameter(torch.randn(num_segments, hidden_size, rank, dtype=model_dtype))
+        self.B_matrices = nn.Parameter(torch.randn(num_segments, rank, hidden_size, dtype=model_dtype))
+        self.bias = nn.Parameter(torch.zeros(num_segments, hidden_size, dtype=model_dtype))
+
+        self.weight_path = "custom_trained_weights.pt"
+    
+    def forward(self, math_hidden_states, segment_ids):
+        # Memory-efficient implementation
+        gathered_A = self.A_matrices[segment_ids]  # Shape: [all_math, H, r]
+        gathered_B = self.B_matrices[segment_ids]  # Shape: [all_math, r, H]
+
+        # 1. Compute intermediate_states = B @ h
+        intermediate_states = torch.bmm(
+            gathered_B,                      # [all_math, r, H]
+            math_hidden_states.unsqueeze(-1) # [all_math, H, 1]
+        ) # -> [all_math, r, 1]
+
+        # 2. Compute transformed_states = A @ intermediate_states
+        transformed_states = torch.bmm(
+            gathered_A,                      # [all_math, H, r]
+            intermediate_states              # [all_math, r, 1]
+        ).squeeze(-1) # -> [all_math, H]
+        
+        return transformed_states + self.bias[segment_ids]
+
+
+    def save_pretrained(self, save_directory: str):
+        # TODO: make it configurable
+        custom_state_dict = {
+            "A_matrices": self.A_matrices.cpu().clone(),
+            "B_matrices": self.B_matrices.cpu().clone(),
+            "bias": self.bias.cpu().clone(),
+        }
+        
+        torch.save(custom_state_dict, os.path.join(save_directory, self.weight_path))
+    
+    def load_pretrained(self, checkpoint_path: str):
+        custom_weights_path = os.path.join(checkpoint_path, self.weight_path)
+        custom_state_dict = torch.load(custom_weights_path, map_location=self.A_matrices.device)
+        self.A_matrices.data = custom_state_dict["A_matrices"].to(self.A_matrices.device)
+        self.B_matrices.data = custom_state_dict["B_matrices"].to(self.B_matrices.device)
+        self.bias.data = custom_state_dict["bias"].to(self.bias.device)
+
 
 class ModelWithAuxiliaryHead(nn.Module):
+    segment_indices: torch.Tensor
     
     def __init__(
         self,
@@ -42,70 +90,52 @@ class ModelWithAuxiliaryHead(nn.Module):
         model_dtype = self.base_model.dtype
 
         self.num_segments = num_segments
-        
-        
-
-        self.A_matrices = nn.Parameter(torch.randn(num_segments, hidden_size, self.rank, dtype=model_dtype))
-        self.B_matrices = nn.Parameter(torch.randn(num_segments, self.rank, hidden_size, dtype=model_dtype))
-        self.bias = nn.Parameter(torch.zeros(num_segments, hidden_size, dtype=model_dtype))
-
         self.distribute_matrices()
-        # What kind of initialization is the best for them? 
-        nn.init.xavier_uniform_(self.A_matrices)
-        nn.init.xavier_uniform_(self.B_matrices)
-
+        self.translator = Translator(num_segments, hidden_size, self.rank, model_dtype, N_max)
         self.lm_head = lm_head
-        
-        # hook registration
-        Llama_with_LoRA = self.base_model.get_base_model()
-
-        def hook_fn(module, inp, out):
-            if not getattr(module, "_hooked_done", False):
-                module._captured_hidden = out[0]
-                module._hooked_done = True
-                
-        self._hook_handle = Llama_with_LoRA.model.layers[self.k].register_forward_hook(hook_fn)
+        self.device = self.base_model.device
       
     def forward(
             self,
-            input_ids: torch.LongTensor = None,
+            input_ids: torch.LongTensor,
+            math_labels: Optional[torch.LongTensor],
             attention_mask: Optional[torch.Tensor] = None,
             starts: Optional[torch.LongTensor] = None,
             ends: Optional[torch.LongTensor] = None,
             math_lengths: Optional[torch.LongTensor] = None,
-            math_labels: Optional[torch.LongTensor] = None,
             math_attention_mask: Optional[torch.Tensor] = None,
             **kwargs
         ):
         
-        layer = self.base_model.get_base_model().model.layers[self.k]
-        if hasattr(layer, "_hooked_done"):
-            layer._hooked_done = False
-        if hasattr(layer, "_captured_hidden"):
-            del layer._captured_hidden
-        
-        # Get the original transformers model from the PeftModel wrapper. It contains the LoRA layers.
-        modified_base_model = self.base_model.get_base_model() # debug_model_structure.py confirms that this contains lora
-
-        # Call the "body" of the model (e.g., LlamaModel) to get the last hidden state
-        # This call goes through the LoRA layers.
+        # TODO: remove dependency from LoRA shaped model
+        modified_base_model = self.base_model.get_base_model() 
         base_model_output = modified_base_model.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             return_dict=True,
         )
-
-        k_layer_hidden_state = layer._captured_hidden
+        
         last_hidden_state = base_model_output.last_hidden_state
-        
         logits = self.lm_head(last_hidden_state)
+    
+        if math_labels is not None:
+            
+            hiddens, indices = self.get_hiddens_and_indices(
+                last_hidden_state, starts, math_lengths, math_labels
+                )
+            segment_ids = self.segment_indices[indices[math_attention_mask == 1]]
+            math_hiddens = self.translator(hiddens, segment_ids)
+            math_logits = self.lm_head(math_hiddens)
+            
+            target_math_tokens = math_labels[math_attention_mask == 1]
+            math_loss = self.compute_math_loss(math_logits, target_math_tokens)
+            A_losses = self.compute_A_losses(math_logits, target_math_tokens, segment_ids)
 
-        simple_talk_loss, final_answer_loss = self.compute_simple_and_final_answer_loss(logits, input_ids, attention_mask, starts, ends)
-        math_loss, A_losses = self.compute_math_loss(k_layer_hidden_state, math_labels, math_attention_mask, starts, math_lengths)
-
+        simple_talk_loss, final_answer_loss = self.compute_simple_and_final_answer_loss(
+            logits, input_ids, attention_mask, starts, ends
+            )
         total_loss = self.beta_1 * math_loss + self.beta_2 * simple_talk_loss + self.beta_3 * final_answer_loss
-        
-        
+
         return {
                 "loss": total_loss,
                 "math_loss": math_loss,
@@ -115,7 +145,6 @@ class ModelWithAuxiliaryHead(nn.Module):
                 "A_losses": A_losses
             }
     
-
 
     def compute_simple_and_final_answer_loss(self, logits, input_ids, attention_mask, starts, ends):
         
@@ -160,8 +189,7 @@ class ModelWithAuxiliaryHead(nn.Module):
         
         return simple_talk_loss, final_answer_loss
 
-    def compute_math_loss(self, last_hidden_state, math_input_ids, math_attention_mask, starts, math_lengths):
-    
+    def get_hiddens_and_indices(self, last_hidden_state, starts, math_lengths, math_input_ids):
         device = last_hidden_state.device
 
         # --- transform hidden states corresponging to math thoughts ---
@@ -179,34 +207,17 @@ class ModelWithAuxiliaryHead(nn.Module):
         # choose matrices for each math hidden state according to the partition
         _, math_seq_len = math_input_ids.shape
         math_indices = torch.arange(math_seq_len, device=device).expand(batch_size, -1)
-        segment_ids = self.segment_indices[math_indices[math_attention_mask == 1]] 
-
-        # Memory-efficient implementation
-        gathered_A = self.A_matrices[segment_ids]  # Shape: [all_math, H, r]
-        gathered_B = self.B_matrices[segment_ids]  # Shape: [all_math, r, H]
-
-        # 1. Compute intermediate_states = B @ h
-        intermediate_states = torch.bmm(
-            gathered_B,                      # [all_math, r, H]
-            math_hidden_states.unsqueeze(-1) # [all_math, H, 1]
-        ) # -> [all_math, r, 1]
-
-        # 2. Compute transformed_states = A @ intermediate_states
-        transformed_states = torch.bmm(
-            gathered_A,                      # [all_math, H, r]
-            intermediate_states              # [all_math, r, 1]
-        ).squeeze(-1) # -> [all_math, H]
         
-        transformed_states = transformed_states + self.bias[segment_ids]
-
-        # --- math loss calculation ---
+        return math_hidden_states, math_indices
+    
+    
+    def compute_math_loss(self, math_logits, target_math_tokens):
+        math_loss = F.cross_entropy(math_logits, target_math_tokens)
         
-        math_logits = self.lm_head(transformed_states)
-        target_math_tokens = math_input_ids[math_attention_mask == 1] # [T] 
-        math_loss = F.cross_entropy(math_logits, target_math_tokens) 
+        return math_loss
 
-        # with torch.no_grad() means that we are not going to calculate gradients for A_losses here
-        
+
+    def compute_A_losses(self, math_logits, target_math_tokens, segment_ids):
         with torch.no_grad():
             per_token_loss = F.cross_entropy(math_logits, target_math_tokens, reduction='none')
             A_losses = []
@@ -215,76 +226,24 @@ class ModelWithAuxiliaryHead(nn.Module):
                 if mask.any():
                     A_losses.append(per_token_loss[mask].mean()) 
                 else:
-                    A_losses.append(torch.tensor(0.0, device=device))
+                    A_losses.append(torch.tensor(0.0, device=self.device))
 
-        return math_loss, A_losses
-
+        return A_losses
 
     def save_pretrained(self, save_directory: str):
         
         # Save the base model (handles both PEFT and base model states)
         self.base_model.save_pretrained(save_directory)
-        
-        # Save custom weights
-        custom_state_dict = {
-            "A_matrices": self.A_matrices.cpu().clone(),
-            "B_matrices": self.B_matrices.cpu().clone(),
-            "bias": self.bias.cpu().clone(),
-        }
-        
-        custom_weights_filename = "custom_trained_weights.pt"
-        save_path = os.path.join(save_directory, custom_weights_filename)
-        try:
-            torch.save(custom_state_dict, save_path)
-            print(f"Custom weights saved to {save_path}")
-        except Exception as e:
-            print(f"Failed to save custom weights: {e}")
-            
-    def load_custom_weights(self, checkpoint_path: str):
-        """
-        Load custom weights (A_matrices, B_matrices, bias) from a checkpoint directory.
-        
-        Args:
-            checkpoint_path: Path to the checkpoint directory containing custom_trained_weights.pt
-        """
-        custom_weights_path = os.path.join(checkpoint_path, "custom_trained_weights.pt")
-        
-        if not os.path.exists(custom_weights_path):
-            print(f"Warning: Custom weights file not found at {custom_weights_path}")
-            return
-        
-        try:
-            custom_state_dict = torch.load(custom_weights_path, map_location=self.A_matrices.device)
-            
-            # Load A_matrices
-            if "A_matrices" in custom_state_dict:
-                self.A_matrices.data = custom_state_dict["A_matrices"].to(self.A_matrices.device)
-                print(f"Loaded A_matrices from {custom_weights_path}")
-            
-            # Load B_matrices
-            if "B_matrices" in custom_state_dict:
-                self.B_matrices.data = custom_state_dict["B_matrices"].to(self.B_matrices.device)
-                print(f"Loaded B_matrices from {custom_weights_path}")
-            
-            # Load bias
-            if "bias" in custom_state_dict:
-                self.bias.data = custom_state_dict["bias"].to(self.bias.device)
-                print(f"Loaded bias from {custom_weights_path}")
-                
-        except Exception as e:
-            print(f"Error loading custom weights: {e}")
-            raise e
+        self.translator.save_pretrained(save_directory)
 
     def get_input_embeddings(self):
         return self.base_model.get_input_embeddings()
 
+    def set_input_embeddings(self, value):
+        self.base_model.set_input_embeddings(value)
+    
     def distribute_matrices(self):
-
         chunk_size = math.ceil(self.N_max / self.num_segments)
         indices = torch.arange(self.N_max, dtype=torch.long) // chunk_size
         self.register_buffer("segment_indices", indices)
-
-    def set_input_embeddings(self, value):
-        self.base_model.set_input_embeddings(value)
-
- 
+         
