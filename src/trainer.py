@@ -132,9 +132,6 @@ class VectorSFTTrainer(SFTTrainer):
         # super()._save(output_dir, state_dict)
         self.model.save_pretrained(output_dir)
         
-
-
-
     def resume_trainer_only(self, checkpoint_path):
         optimizer_path = os.path.join(checkpoint_path, "optimizer.pt")
         if os.path.exists(optimizer_path):

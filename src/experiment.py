@@ -1,7 +1,7 @@
 from typing import List, Dict, Any
 import torch
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, PreTrainedTokenizer, PreTrainedModel
+from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
 import os
 
 from peft import LoraConfig, get_peft_model
@@ -120,13 +120,15 @@ class SFTExperiment(Experiment):
 
         return base_model, tokenizer
 
+    def initialize_translator_matrices(self):
+        torch.nn.init.xavier_uniform_(self.base_model.translator.A_matrices)
+        torch.nn.init.xavier_uniform_(self.base_model.translator.B_matrices)
+
+
     def setup_lora_and_auxiliary(self):
         """Setup PEFT configuration and auxiliary matrices at the last hidden layer"""
 
         lm_head = self.base_model.get_output_embeddings()
-        if lm_head is None:
-            raise ValueError("Could not get output embeddings from the base model before applying PEFT.")
-
         # Setup LoRA
         if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
             # Load LoRA from checkpoint
@@ -158,7 +160,7 @@ class SFTExperiment(Experiment):
         # Load custom weights if resuming from checkpoint
         if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
             print(f"Loading custom weights from {self.resume_from_checkpoint}")
-            self.model.load_custom_weights(self.resume_from_checkpoint)
+            self.model.translator.load_pretrained(self.resume_from_checkpoint)
 
     def prepare_datasets(self) -> callable:
         """
