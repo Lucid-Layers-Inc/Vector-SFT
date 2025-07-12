@@ -108,3 +108,4 @@ venv/
 .venv/
 env/
 .env/
+VectorSFT-checkpoints-test/
