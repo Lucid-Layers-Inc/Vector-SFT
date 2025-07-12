@@ -1,18 +1,9 @@
 import torch
 import torch.nn as nn
-from transformers import PreTrainedModel, PretrainedConfig
-from torch.nn import functional as F
-from transformers.modeling_outputs import CausalLMOutputWithPast
-from typing import Optional, Any
+from typing import Optional
 import math
 import os
-from omegaconf import ListConfig
-from typing import Dict
-from peft import PeftModel
-from peft import get_peft_model_state_dict
-from safetensors.torch import save_file
-
-from transformers import LlamaForCausalLM
+from transformers import PreTrainedModel
 
 
 class Translator(nn.Module):    
@@ -27,17 +18,18 @@ class Translator(nn.Module):
         self.B_matrices = nn.Parameter(torch.randn(num_segments, rank, hidden_size, dtype=model_dtype))
         self.bias = nn.Parameter(torch.zeros(num_segments, hidden_size, dtype=model_dtype))
         
+        self.weight_path = "custom_trained_weights.pt"
+    
+    def init_weights(self):
         nn.init.xavier_uniform_(self.A_matrices)
         nn.init.xavier_uniform_(self.B_matrices)
-        
-        self.weight_path = "custom_trained_weights.pt"
     
     def forward(self, math_hidden_states, segment_ids):
         
         # Memory-efficient implementation
         gathered_A = self.A_matrices[segment_ids]  # Shape: [all_math, H, r]
         gathered_B = self.B_matrices[segment_ids]  # Shape: [all_math, r, H]
-
+        
         # 1. Compute intermediate_states = B @ h
         intermediate_states = torch.bmm(
             gathered_B,                      # [all_math, r, H]
@@ -106,11 +98,9 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.lm_head = lm_head
         self.device = self.base_model.device
         
-       
-        
     def forward(
             self,
-            input_ids: torch.LongTensor = None,
+            input_ids: Optional[torch.LongTensor] = None,
             attention_mask: Optional[torch.Tensor] = None,
             **kwargs
         ):
@@ -127,7 +117,7 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         last_hidden_state = base_model_output.last_hidden_state
         logits = self.lm_head(last_hidden_state)
-
+        
         return {
                 "logits": logits,
                 "last_hidden_state": last_hidden_state 
