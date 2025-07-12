@@ -115,6 +115,7 @@ def get_hiddens_and_indices(last_hidden_state, starts, math_lengths, math_input_
     #         [0, 1, 2, 3, 4]])
     mask_hidden = (indices >= starts.unsqueeze(1)) & (indices < (starts + math_lengths).unsqueeze(1))
     hiddens = last_hidden_state[mask_hidden] # [T, H]
+    
 
     # choose matrices for each math hidden state according to the partition
     _, math_seq_len = math_input_ids.shape
@@ -128,7 +129,6 @@ def compute_math_loss(model, last_hidden_state, math_input_ids, math_attention_m
 
     math_hidden_states, math_indices = get_hiddens_and_indices(last_hidden_state, starts, math_lengths, math_input_ids)
     segment_ids = model.segment_indices[math_indices[math_attention_mask == 1]] 
-    
     math_hiddens = model.translator(math_hidden_states, segment_ids)
     math_logits = model.lm_head(math_hiddens)
 
