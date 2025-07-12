@@ -29,8 +29,13 @@ class VectorSFTTrainer(SFTTrainer):
         """
         
         model = model.module if hasattr(model, 'module') else model
-        
         outputs = model(**inputs)
+        
+        if next(model.parameters()).dtype == torch.bfloat16:
+            if outputs['last_hidden_state'].dtype != torch.bfloat16:
+                outputs['last_hidden_state'] = outputs['last_hidden_state'].to(torch.bfloat16)
+            if outputs['logits'].dtype != torch.bfloat16:
+                outputs['logits'] = outputs['logits'].to(torch.bfloat16)
         
         source = inputs['source_label'][0].item()
         #print('source', source)

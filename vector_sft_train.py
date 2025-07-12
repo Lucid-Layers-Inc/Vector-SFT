@@ -13,12 +13,11 @@ def main(config: str):
         config,
         # resume_from_checkpoint=checkpoint_path
         )
-        
     experiment.setup_lora_and_auxiliary()
     experiment.prepare_datasets()
-
     training_args = SFTConfig(**experiment.cfg.trainer)
-
+    
+    experiment.task_init()
     trainer = VectorSFTTrainer(
         model=experiment.model,
         processing_class=experiment.tokenizer,
