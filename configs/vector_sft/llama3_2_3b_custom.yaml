@@ -1,7 +1,7 @@
 project:
-  name: "Experiment1"
+  name: "Experiment2"
   experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment1"
+  hf_checkpoint: "ExplosionNuclear/Experiment2"
 
 clearml:
   project_name: ${project.name}
@@ -14,24 +14,29 @@ dataset:
   eval_size: 2000
   max_length: 800
 
+calibration_dataset:
+  name: "ExplosionNuclear/simple_talks"
+
+probs:
+  p1: 0.8
+  p2: 0.2
+
 model:
-  #name: "meta-llama/Llama-3.2-3B-Instruct"
   name: ExplosionNuclear/Llama-2.3-3B-Instruct-special
   dtype: "bfloat16"
   device_map: "cuda"
   attn_implementation: "flash_attention_2"
-  special_tokens:
-    - "<simple_talk>"
-    - "</simple_talk>"
+  #special_tokens:
+  #  - "<simple_talk>"
+  #  - "</simple_talk>"
 
 auxiliary:
-  N_max: 300 # maximal length of mathematical proof (actually it's smaller then that)
+  N_max: 300 
   num_segments: 20
   beta_1: 0.3
   beta_2: 0.7
   beta_3: 2
   segments_rank: 256
-  k: 25
 
 peft:
   r: 128
@@ -51,7 +56,7 @@ peft:
 
 trainer:
   output_dir: "./VectorSFT-checkpoints"
-  num_train_epochs: 30
+  num_train_epochs: 12
   per_device_train_batch_size: 16
   gradient_accumulation_steps: 8
   learning_rate: 3e-4
