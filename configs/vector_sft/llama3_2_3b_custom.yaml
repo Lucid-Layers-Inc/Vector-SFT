@@ -15,7 +15,7 @@ dataset:
   max_length: 800
 
 calibration_dataset:
-  name: "ExplosionNuclear/simple_talks"
+  name: "ExplosionNuclear/new_simple_talks"
 
 probs:
   p1: 0.8
@@ -66,7 +66,7 @@ trainer:
   logging_steps: 10
   save_steps: 100
   bf16: true
-  tf32: true
+  tf32: false
   gradient_checkpointing: false
   optim: "adamw_torch"
   report_to: "none"
