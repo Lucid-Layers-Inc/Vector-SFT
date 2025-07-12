@@ -1,15 +1,16 @@
+import os
 from typing import List, Dict, Any
 import torch
 from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
-import os
+from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, PreTrainedTokenizer, PreTrainedModel
 
 from peft import LoraConfig, get_peft_model
 from src.model import ModelWithAuxiliaryHead
 from src.common.default import Experiment
 from omegaconf import OmegaConf
+from src.common.mixed_dataloader import MixtureIterableLoader
+from torch.utils.data import DataLoader
 from peft import PeftModel
-
 
 
 def create_labels(
@@ -19,6 +20,7 @@ def create_labels(
     """
     All before <simple_talk> and all padding tokens are masked with -100. 
     """
+    
     labels = torch.full_like(input_ids, fill_value=-100)
     starts, ends = [], []
 
@@ -37,7 +39,9 @@ def create_labels(
     labels[attention_mask == 0] = -100
 
     return labels, starts, ends
-    
+
+
+
 class DatasetProcessor:
     def __init__(self, tokenizer: PreTrainedTokenizer, cfg):
         self.tokenizer = tokenizer
@@ -51,14 +55,41 @@ class DatasetProcessor:
 
 
     def load_and_prepare(self):
+        
         """Load and prepare the dataset."""
-        dataset = load_dataset(self.cfg.dataset.name,)
-
+        
+        main_dataset = load_dataset(self.cfg.dataset.name)
+        calibration_dataset = load_dataset(self.cfg.calibration_dataset.name)
+        
         train_size, eval_size = self.cfg.dataset.train_size, self.cfg.dataset.eval_size
-        train_dataset = dataset["train"].select(range(train_size))
-        eval_dataset = dataset["train"].select(range(train_size, train_size + eval_size))
+        train_dataset = main_dataset["train"].select(range(train_size))
+        eval_dataset = main_dataset["train"].select(range(train_size, train_size + eval_size))
+        
+        p0 = self.cfg.probs.p1
+        train_calib_size = int(len(train_dataset) / p0 - len(train_dataset))
+        eval_calib_size = int(len(eval_dataset) / p0 - len(eval_dataset))
+        
+        train_calib_dataset = calibration_dataset["train"].select(range(train_calib_size))
+        eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
+        
+        train_loader_main = DataLoader(
+            train_dataset,
+            batch_size = self.cfg.trainer.per_device_train_batch_size,
+            shuffle = True,
+            collate_fn = self.data_collate,   
+        )
 
-        return train_dataset, eval_dataset
+        train_loader_calib = DataLoader(
+            train_calib_dataset,
+            batch_size = self.cfg.trainer.per_device_train_batch_size,
+            shuffle = True,
+            collate_fn = self.data_calibration_collate,   
+        )
+        
+        probs = (self.cfg.probs.p1, self.cfg.probs.p2)
+        mix_data_loader = MixtureIterableLoader(train_loader_main, train_loader_calib, probs=probs)
+
+        return mix_data_loader, eval_dataset, eval_calib_dataset
 
     def data_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
         """
@@ -96,13 +127,45 @@ class DatasetProcessor:
             "math_labels": batch_math_padded["input_ids"],
             "math_attention_mask": batch_math_padded["attention_mask"],
         }
+        
+    def data_calibration_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+        
+        """
+        Collate function for the calibration dataset.
+        Processes questions and answers. 
+        """
+        
+        if not features:
+            return {}
+
+        full_texts = [feature["question"] + feature["answer"] for feature in features]
+        batch = self.tokenizer(full_texts, padding=True, return_tensors="pt")
+        labels = batch["input_ids"].clone()
+        
+        questions = [feature["question"] for feature in features]
+        tokenized_questions = self.tokenizer(questions)
+        q_lengths = [len(row) for row in tokenized_questions['input_ids']]
+
+        for i in range(len(q_lengths)):
+            labels[i, :q_lengths[i]] = -100
+        
+        labels[labels == self.tokenizer.pad_token_id] = -100
+        
+        batch["labels"] = labels
+        
+        return {
+            "input_ids": batch["input_ids"], 
+            "labels": batch["labels"], 
+            "attention_mask": batch["attention_mask"]
+         }
 
 
 class SFTExperiment(Experiment):
     
-
     def __init__(self, config: str, resume_from_checkpoint: str = None):
+        
         super().__init__(config)
+        self.task_init()
         self.resume_from_checkpoint = resume_from_checkpoint
 
         self.base_model, self.tokenizer = self.prepare_model_and_tokenizer()
@@ -120,20 +183,19 @@ class SFTExperiment(Experiment):
 
         return base_model, tokenizer
 
-    def initialize_translator_matrices(self):
-        torch.nn.init.xavier_uniform_(self.base_model.translator.A_matrices)
-        torch.nn.init.xavier_uniform_(self.base_model.translator.B_matrices)
-
-
     def setup_lora_and_auxiliary(self):
+        
+
         """Setup PEFT configuration and auxiliary matrices at the last hidden layer"""
 
         lm_head = self.base_model.get_output_embeddings()
         # Setup LoRA
+        
         if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
             # Load LoRA from checkpoint
             print(f"Loading LoRA weights from {self.resume_from_checkpoint}")
             self.lora_wrapped = PeftModel.from_pretrained(self.base_model, self.resume_from_checkpoint, is_trainable=True)
+            
         else:
             # Create new LoRA
             print("Creating new LoRA configuration")
@@ -145,20 +207,19 @@ class SFTExperiment(Experiment):
 
         # Create auxiliary head model
         self.model = ModelWithAuxiliaryHead(
-            #config=self.lora_wrapped.config,
-            base_model=self.lora_wrapped,
-            lm_head=lm_head,
-            N_max=self.cfg.auxiliary.N_max,
-            num_segments=self.cfg.auxiliary.num_segments,
-            beta_1=self.cfg.auxiliary.beta_1,
-            beta_2=self.cfg.auxiliary.beta_2,
-            beta_3=self.cfg.auxiliary.beta_3,
-            r=self.cfg.auxiliary.segments_rank,
-            k=self.cfg.auxiliary.k,
+                base_model=self.lora_wrapped,
+                lm_head=lm_head,
+                N_max=self.cfg.auxiliary.N_max,
+                num_segments=self.cfg.auxiliary.num_segments,
+                beta_1=self.cfg.auxiliary.beta_1,
+                beta_2=self.cfg.auxiliary.beta_2,
+                beta_3=self.cfg.auxiliary.beta_3,
+                r=self.cfg.auxiliary.segments_rank
             )
         
         # Load custom weights if resuming from checkpoint
         if self.resume_from_checkpoint is not None and os.path.exists(self.resume_from_checkpoint):
+            
             print(f"Loading custom weights from {self.resume_from_checkpoint}")
             self.model.translator.load_pretrained(self.resume_from_checkpoint)
 
@@ -167,5 +228,5 @@ class SFTExperiment(Experiment):
         Loads and prepares the dataset. Returns the data collator as callable function.
         Returns: The data collator function.
         """
-        self.train_dataset, self.eval_dataset = self.dataset_processor.load_and_prepare()
-        return self.dataset_processor.data_collate
+        self.mix_data_loader, self.eval_dataset, self.eval_calib_dataset = self.dataset_processor.load_and_prepare()
+        
