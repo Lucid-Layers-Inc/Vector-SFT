@@ -3,6 +3,7 @@ import fire
 from trl import SFTConfig
 
 from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback
+from src.common.losses import Betas
 from src.experiment import SFTExperiment
 from src.trainer import VectorSFTTrainer
 
@@ -11,7 +12,6 @@ def main(config: str):
 
     experiment = SFTExperiment(
         config,
-        # resume_from_checkpoint=checkpoint_path
         )
     experiment.setup_lora_and_auxiliary()
     experiment.prepare_datasets()
@@ -29,11 +29,12 @@ def main(config: str):
             ClearMLCallback(experiment.task),
             SaveCustomWeightsOnHubCallback()
         ],
-        dataset_processor=experiment.dataset_processor
+        dataset_processor=experiment.dataset_processor,
+        betas=Betas(**experiment.cfg.betas)
     )
 
     trainer.train(
-        # resume_from_checkpoint=checkpoint_path
+        resume_from_checkpoint=experiment.cfg.resume_from_checkpoint
     )
 
 if __name__ == "__main__":

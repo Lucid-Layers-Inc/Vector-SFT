@@ -35,10 +35,12 @@ model:
 auxiliary:
   N_max: 300 # maximal length of mathematical proof (actually it's smaller then that)
   num_segments: 5
+  segments_rank: 2
+
+betas:
   beta_1: 0.5
   beta_2: 0.5
   beta_3: 2
-  segments_rank: 2
 
 peft:
   r: 2
@@ -55,6 +57,8 @@ peft:
     - "up_proj"
     - "down_proj"
     - "o_proj"
+
+resume_from_checkpoint: null
 
 trainer:
   output_dir: "./VectorSFT-checkpoints-test"

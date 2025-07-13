@@ -2,24 +2,27 @@ import os
 import json
 
 import torch
-import torch.nn as nn
 from trl import SFTTrainer
 from typing import Optional
 from transformers.trainer_utils import EvalLoopOutput
-from typing import List, Dict, Any
-from src.common.losses import calculate_all_main_losses, calculate_calibration_loss
+from typing import List
+from src.common.losses import Betas, calculate_all_main_losses, plain_cross_entropy_loss
 from torch.utils.data import DataLoader
 from transformers.trainer import TrainerState
+from torch.utils.data import Dataset
 
 
 class VectorSFTTrainer(SFTTrainer):
+    eval_dataset: list[Dataset]
+    train_dataset: Dataset
     
-    def __init__(self, *args, dataset_processor=None, **kwargs):
+    def __init__(self, *args, betas: Betas, dataset_processor=None, **kwargs):
         
             super().__init__(*args, **kwargs)
             if dataset_processor is None:
                 raise ValueError("VectorSFTTrainer requires a `dataset_processor`.")
             self.dataset_processor = dataset_processor
+            self.betas = betas
         
     def compute_loss(self, model, inputs, num_items_in_batch=None, return_outputs=False):
         
@@ -28,33 +31,22 @@ class VectorSFTTrainer(SFTTrainer):
         Accumulates all losses into `self._metrics` for later logging.
         """
         
-        model = model.module if hasattr(model, 'module') else model
         outputs = model(**inputs)
         
-        if next(model.parameters()).dtype == torch.bfloat16:
-            if outputs['last_hidden_state'].dtype != torch.bfloat16:
-                outputs['last_hidden_state'] = outputs['last_hidden_state'].to(torch.bfloat16)
-            if outputs['logits'].dtype != torch.bfloat16:
-                outputs['logits'] = outputs['logits'].to(torch.bfloat16)
-        
         source = inputs['source_label'][0].item()
-        #print('source', source)
         if source == 0:
-            losses_dict = calculate_all_main_losses(model, outputs, inputs)
+            losses_dict = calculate_all_main_losses(outputs, inputs, self.betas)
             current_loss = losses_dict["total_loss"]
         else: 
-            losses_dict = calculate_calibration_loss(outputs, inputs)
+            losses_dict = {"calibration_loss": plain_cross_entropy_loss(outputs["logits"], inputs["input_ids"])}
             current_loss = losses_dict["calibration_loss"]
-        
-            
-        # self._metrics is a defaultdict(list) that will be averaged and logged by self.log()
-        
+                
         for key, value in losses_dict.items():
             self._metrics[key].append(value.item())
 
         return (current_loss, outputs) if return_outputs else current_loss
 
-    def get_train_dataloader(self) -> DataLoader:
+    def get_train_dataloader(self) -> Dataset:
         """
         Overrides the standard method.
         """
@@ -108,7 +100,7 @@ class VectorSFTTrainer(SFTTrainer):
             inputs = self._prepare_inputs(inputs)
             with torch.no_grad():
                 outputs = model(**inputs)
-                losses_dict_main = calculate_all_main_losses(model, outputs, inputs)
+                losses_dict_main = calculate_all_main_losses(outputs, inputs, self.betas)
                 
                 gathered_losses = {}
                 for key, value in losses_dict_main.items():
@@ -134,7 +126,7 @@ class VectorSFTTrainer(SFTTrainer):
             inputs = self._prepare_inputs(inputs)
             with torch.no_grad():
                 outputs = model(**inputs)
-                losses_dict_calib = calculate_calibration_loss(outputs, inputs)
+                losses_dict_calib = {"calibration_loss": plain_cross_entropy_loss(outputs["logits"], inputs["input_ids"])}
                 
                 gathered_losses = {}
                 for key, value in losses_dict_calib.items():
