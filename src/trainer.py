@@ -111,45 +111,49 @@ class VectorSFTTrainer(SFTTrainer):
                 
             self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
                 
-
-        # --- Stage 2. Evaluation on the calibration dataset ----
         
-        eval_dataset_calib = self.eval_dataset[1]
-        eval_loader_calib = DataLoader(
-            eval_dataset_calib,
-            batch_size = self.args.per_device_eval_batch_size,
-            shuffle = False,
-            collate_fn = self.dataset_processor.data_calibration_collate,   
-        )
-
+        # --- Stage 2. Evaluation on the calibration dataset (if it exists) ----
         
         all_metrics_calib = []
-        for inputs in eval_loader_calib:
-            inputs = self._prepare_inputs(inputs)
-            with torch.no_grad():
-                outputs = model(**inputs)
-                losses_dict_calib = {"calibration_loss": plain_cross_entropy_loss(outputs["logits"], inputs["input_ids"])}
-                
-                gathered_losses = {}
-                for key, value in losses_dict_calib.items():
-                    gathered_losses[key] = self.gather_function(value).detach() # type: ignore
-                all_metrics_calib.append(gathered_losses)
-                
-            self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
+        if len(self.eval_dataset) > 1:
+            eval_dataset_calib = self.eval_dataset[1]
+            eval_loader_calib = DataLoader(
+                eval_dataset_calib,
+                batch_size = self.args.per_device_eval_batch_size,
+                shuffle = False,
+                collate_fn = self.dataset_processor.data_calibration_collate,   
+            )
+            
+            for inputs in eval_loader_calib:
+                inputs = self._prepare_inputs(inputs)
+                with torch.no_grad():
+                    outputs = model(**inputs)
+                    losses_dict_calib = {"calibration_loss": plain_cross_entropy_loss(outputs["logits"], inputs["input_ids"])}
+                    
+                    gathered_losses = {}
+                    for key, value in losses_dict_calib.items():
+                        gathered_losses[key] = self.gather_function(value).detach() # type: ignore
+                    all_metrics_calib.append(gathered_losses)
+                    
+                self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
 
         # --- Stage 3. Aggregate and compute mean ---
         
         final_metrics = {}
         
-        for key in all_metrics_main[0].keys():
-            mean_val = torch.tensor([d[key].item() for d in all_metrics_main]).mean().item()
-            final_metrics[f"{metric_key_prefix}_{key}"] = mean_val
+        if all_metrics_main:
+            for key in all_metrics_main[0].keys():
+                mean_val = torch.tensor([d[key].item() for d in all_metrics_main]).mean().item()
+                final_metrics[f"{metric_key_prefix}_{key}"] = mean_val
+
+        if all_metrics_calib:
+            for key in all_metrics_calib[0].keys():
+                mean_val = torch.tensor([d[key].item() for d in all_metrics_calib]).mean().item()
+                final_metrics[f"{metric_key_prefix}_{key}"] = mean_val
             
-        for key in all_metrics_calib[0].keys():
-            mean_val = torch.tensor([d[key].item() for d in all_metrics_calib]).mean().item()
-            final_metrics[f"{metric_key_prefix}_{key}"] = mean_val
-            
-        num_samples = len(eval_dataset_main) + len(eval_dataset_calib) # type: ignore
+        num_samples = len(eval_dataset_main)
+        if len(self.eval_dataset) > 1:
+            num_samples += len(self.eval_dataset[1])
         
         return EvalLoopOutput(
                 predictions=None, # type: ignore

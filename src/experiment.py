@@ -65,12 +65,6 @@ class DatasetProcessor:
         train_dataset = main_dataset["train"].select(range(train_size))
         eval_dataset = main_dataset["train"].select(range(train_size, train_size + eval_size))
         
-        train_calib_size = int(len(train_dataset) * self.cfg.calib_prob)
-        eval_calib_size = int(len(eval_dataset) * self.cfg.calib_prob)
-        
-        train_calib_dataset = calibration_dataset["train"].select(range(train_calib_size))
-        eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
-        
         train_loader_main = DataLoader(
             train_dataset, # type: ignore
             batch_size = self.cfg.trainer.per_device_train_batch_size,
@@ -78,16 +72,27 @@ class DatasetProcessor:
             collate_fn = self.data_collate,   
         )
 
-        train_loader_calib = DataLoader(
-            train_calib_dataset, # type: ignore
-            batch_size = self.cfg.trainer.per_device_train_batch_size,
-            shuffle = True,
-            collate_fn = self.data_calibration_collate,   
-        )
-        
-        mix_data_loader = MixtureIterableLoader(
-            train_loader_main, train_loader_calib, self.cfg.calib_prob
-        )
+        if self.cfg.calib_prob > 0:
+            train_calib_size = int(len(train_dataset) * self.cfg.calib_prob)
+            eval_calib_size = int(len(eval_dataset) * self.cfg.calib_prob)
+            
+            train_calib_dataset = calibration_dataset["train"].select(range(train_calib_size))
+            eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
+
+            train_loader_calib = DataLoader(
+                train_calib_dataset, # type: ignore
+                batch_size = self.cfg.trainer.per_device_train_batch_size,
+                shuffle = True,
+                collate_fn = self.data_calibration_collate,   
+            )
+            
+            mix_data_loader = MixtureIterableLoader(
+                train_loader_main, train_loader_calib, self.cfg.calib_prob
+            )
+        else:
+            mix_data_loader = train_loader_main
+            eval_calib_dataset = calibration_dataset["train"].select(range(0))
+
 
         return mix_data_loader, eval_dataset, eval_calib_dataset
 
@@ -115,7 +120,7 @@ class DatasetProcessor:
         
         batch_math_padded = self.tokenizer(math_reasoning_texts, padding=True, return_tensors="pt")
         
-
+        batch_size = batch["input_ids"].shape[0]
         return {
             "input_ids": batch["input_ids"], 
             "labels": labels, 
@@ -125,6 +130,7 @@ class DatasetProcessor:
             "math_lengths": math_reasoning_lengths,
             "math_labels": batch_math_padded["input_ids"],
             "math_attention_mask": batch_math_padded["attention_mask"],
+            "source_label": torch.zeros(batch_size, dtype=torch.long)
         }
         
     def data_calibration_collate(self, features: List[Dict[str, Any]]) -> Dict[str, Any | torch.Tensor]:
@@ -151,11 +157,13 @@ class DatasetProcessor:
         labels[labels == self.tokenizer.pad_token_id] = -100
         
         batch["labels"] = labels
+        batch_size = batch["input_ids"].shape[0]
         
         return {
             "input_ids": batch["input_ids"], 
             "labels": batch["labels"], 
-            "attention_mask": batch["attention_mask"]
+            "attention_mask": batch["attention_mask"],
+            "source_label": torch.ones(batch_size, dtype=torch.long)
          }
 
 

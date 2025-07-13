@@ -26,9 +26,6 @@ class MixtureIterableLoader(IterableDataset):
                 iterators[i] = iter(self.loaders[i])
                 batch = next(iterators[i])
             
-            batch_size = batch['input_ids'].shape[0]
-            batch['source_label'] = torch.full((batch_size,), i, dtype=torch.long)
-            
             yield batch
 
  
