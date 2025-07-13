@@ -1,7 +1,7 @@
 project:
-  name: "Experiment1"
-  experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment1"
+  name: "Experiment2"
+  experiment_name: "linear-systems-95"
+  hf_checkpoint: "ExplosionNuclear/Experiment2-95"
 
 clearml:
   project_name: ${project.name}
@@ -10,39 +10,34 @@ clearml:
 
 dataset:
   name: "ExplosionNuclear/ExpNew7"
-  train_size: 200
-  eval_size: 100
+  train_size: 12500
+  eval_size: 2000
   max_length: 800
-  p: 1.0  # probability for randomized formatting
 
 calibration_dataset:
-  name: "ExplosionNuclear/simple_talks"
+  name: "ExplosionNuclear/new_simple_talks"
 
-calib_prob: 0.4
+calib_prob: 0.05
 
 model:
-  #name: "meta-llama/Llama-3.2-3B-Instruct"
   name: ExplosionNuclear/Llama-2.3-3B-Instruct-special
   dtype: "bfloat16"
-  device_map: "cuda:0"
+  device_map: "cuda"
   attn_implementation: "flash_attention_2"
-  #special_tokens:
-  #  - "<simple_talk>"
-  #  - "</simple_talk>"
 
 auxiliary:
-  N_max: 300 # maximal length of mathematical proof (actually it's smaller then that)
-  num_segments: 5
-  segments_rank: 2
+  N_max: 300 
+  num_segments: 20
+  segments_rank: 256
 
 betas:
-  beta_1: 0.5
-  beta_2: 0.5
+  beta_1: 0.3
+  beta_2: 0.7
   beta_3: 2
 
 peft:
-  r: 2
-  lora_alpha: 16
+  r: 128
+  lora_alpha: 128
   lora_dropout: 0.05
   bias: "lora_only"
   task_type: "CAUSAL_LM"
@@ -59,18 +54,18 @@ peft:
 resume_from_checkpoint: null
 
 trainer:
-  output_dir: "./VectorSFT-checkpoints-test"
-  num_train_epochs: 8
-  per_device_train_batch_size: 4
-  gradient_accumulation_steps: 5
+  output_dir: "./VectorSFT-checkpoints"
+  num_train_epochs: 20
+  per_device_train_batch_size: 16
+  gradient_accumulation_steps: 8
   learning_rate: 3e-4
   weight_decay: 0.01
   lr_scheduler_type: "linear"
-  warmup_steps: 3
-  logging_steps: 2
-  save_steps: 15
+  warmup_steps: 100
+  logging_steps: 10
+  save_steps: 100
   bf16: true
-  tf32: true
+  tf32: false
   gradient_checkpointing: false
   optim: "adamw_torch"
   report_to: "none"
