@@ -72,18 +72,12 @@ class ModelWithAuxiliaryHead(nn.Module):
         N_max: int,          
         num_segments: int,         # Number of linear-probing matrices A_i and segments
         lm_head: nn.Module,
-        beta_1: float = 0.5,       # for loss on math reasoning
-        beta_2: float = 0.5,       # for loss on simple talk
-        beta_3: float = 0.4,       # for loss on final answer
         r: int = 256,              # segments rank
     ):
        
         super().__init__()
         self.base_model = base_model
         self.config = base_model.config
-        self.beta_1 = beta_1
-        self.beta_2 = beta_2
-        self.beta_3 = beta_3
         self.rank = r
         self.N_max = N_max
         
@@ -118,9 +112,21 @@ class ModelWithAuxiliaryHead(nn.Module):
         last_hidden_state = base_model_output.last_hidden_state
         logits = self.lm_head(last_hidden_state)
         
+        math_logits = None
+        
+        if "math_labels" in kwargs:
+        
+            math_hidden_states, math_indices = get_hiddens_and_indices(last_hidden_state, kwargs["starts"], kwargs["math_lengths"], kwargs["math_labels"])
+            segment_ids = self.segment_indices[math_indices[kwargs["math_attention_mask"] == 1]] 
+            math_hiddens = self.translator(math_hidden_states, segment_ids)
+            math_logits = self.lm_head(math_hiddens)
+        
+        
+        
         return {
                 "logits": logits,
-                "last_hidden_state": last_hidden_state 
+                "last_hidden_state": last_hidden_state,
+                "math_logits": math_logits,
             }
         
      
@@ -144,3 +150,26 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.base_model.set_input_embeddings(value)
 
  
+ 
+def get_hiddens_and_indices(last_hidden_state, starts, math_lengths, math_input_ids):
+        
+    device = last_hidden_state.device
+
+    # --- transform hidden states corresponging to math thoughts ---
+    
+    # Choose hidden states corresponding to indices where math thoughts must be hidden 
+    batch_size, seq_len, _ = last_hidden_state.shape
+    indices = torch.arange(seq_len, device=device).expand(batch_size, -1) # -1 means to keep the last dimension the same
+    # indices:
+    # tensor([[0, 1, 2, 3, 4],
+    #         [0, 1, 2, 3, 4],
+    #         [0, 1, 2, 3, 4]])
+    mask_hidden = (indices >= starts.unsqueeze(1)) & (indices < (starts + math_lengths).unsqueeze(1))
+    hiddens = last_hidden_state[mask_hidden] # [T, H]
+    
+
+    # choose matrices for each math hidden state according to the partition
+    _, math_seq_len = math_input_ids.shape
+    indices = torch.arange(math_seq_len, device=device).expand(batch_size, -1)
+    
+    return hiddens, indices
