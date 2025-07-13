@@ -4,6 +4,7 @@ from typing import Optional
 import math
 import os
 from transformers import PreTrainedModel
+from peft import PeftModel  # type: ignore
 
 
 class Translator(nn.Module):    
@@ -68,7 +69,7 @@ class ModelWithAuxiliaryHead(nn.Module):
     
     def __init__(
         self,
-        base_model: PreTrainedModel,
+        base_model: PreTrainedModel | PeftModel,
         N_max: int,          
         num_segments: int,         # Number of linear-probing matrices A_i and segments
         lm_head: nn.Module,

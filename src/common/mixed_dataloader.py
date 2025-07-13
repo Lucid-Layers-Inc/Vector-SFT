@@ -1,14 +1,15 @@
 import random
-from torch.utils.data import DataLoader, IterableDataset
+
 import torch
+from torch.utils.data import DataLoader, IterableDataset
+
 
 class MixtureIterableLoader(IterableDataset):
     
-    def __init__(self, loader_main: DataLoader, loader_calib: DataLoader, probs: tuple[float, float]):
+    def __init__(self, loader_main: DataLoader, loader_calib: DataLoader, calib_prob: float):
         
         self.loaders = [loader_main, loader_calib]
-        print(f"lnegth of main loader is {len(loader_main)}")
-        self.probs = probs
+        self.calib_probs = [1 - calib_prob, calib_prob]
         
     def __iter__(self):
         
@@ -16,7 +17,7 @@ class MixtureIterableLoader(IterableDataset):
         
         for _ in range(len(self)):
             
-            i = random.choices([0, 1], weights=self.probs, k=1)[0]
+            i = random.choices([0, 1], weights=self.calib_probs, k=1)[0]
             iterator = iterators[i]
             try:
                 batch = next(iterator)
@@ -32,5 +33,4 @@ class MixtureIterableLoader(IterableDataset):
 
  
     def __len__(self):
-
-        return int(len(self.loaders[0]) / self.probs[0])
+        return int(len(self.loaders[0]) / self.calib_probs[0])

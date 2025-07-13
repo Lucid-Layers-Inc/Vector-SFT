@@ -4,7 +4,7 @@ from typing import List, Dict, Any
 import torch
 from datasets import DatasetDict, load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
-from peft.config import LoraConfig, get_peft_model, PeftModel  # type: ignore
+from peft import LoraConfig, get_peft_model, PeftModel  # type: ignore
 from torch.utils.data import DataLoader
 
 from src.model import ModelWithAuxiliaryHead
@@ -64,9 +64,8 @@ class DatasetProcessor:
         train_dataset = main_dataset["train"].select(range(train_size))
         eval_dataset = main_dataset["train"].select(range(train_size, train_size + eval_size))
         
-        p0 = self.cfg.probs.p1
-        train_calib_size = int(len(train_dataset) / p0 - len(train_dataset))
-        eval_calib_size = int(len(eval_dataset) / p0 - len(eval_dataset))
+        train_calib_size = int(len(train_dataset) * self.cfg.calib_prob)
+        eval_calib_size = int(len(eval_dataset) * self.cfg.calib_prob)
         
         train_calib_dataset = calibration_dataset["train"].select(range(train_calib_size))
         eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
@@ -85,8 +84,9 @@ class DatasetProcessor:
             collate_fn = self.data_calibration_collate,   
         )
         
-        probs = (self.cfg.probs.p1, self.cfg.probs.p2)
-        mix_data_loader = MixtureIterableLoader(train_loader_main, train_loader_calib, probs=probs)
+        mix_data_loader = MixtureIterableLoader(
+            train_loader_main, train_loader_calib, self.cfg.calib_prob
+        )
 
         return mix_data_loader, eval_dataset, eval_calib_dataset
 
