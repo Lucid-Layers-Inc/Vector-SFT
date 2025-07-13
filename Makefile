@@ -37,5 +37,5 @@ dump_data:
 craken:
 	python vector_sft_train.py configs/vector_sft/llama3_2_3b_custom_95.yaml
 
-pity_craken:
+test_craken:
 	python vector_sft_train.py configs/vector_sft/test.yaml
