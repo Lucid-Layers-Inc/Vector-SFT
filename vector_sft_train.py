@@ -2,7 +2,7 @@ import fire
 
 from trl import SFTConfig
 
-from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback
+from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback, GenerationCallback
 from src.common.losses import Betas
 from src.experiment import SFTExperiment
 from src.trainer import VectorSFTTrainer
@@ -27,7 +27,11 @@ def main(config: str):
         data_collator= lambda x: x, # batches are already prepeared
         callbacks=[
             ClearMLCallback(experiment.task),
-            SaveCustomWeightsOnHubCallback()
+            SaveCustomWeightsOnHubCallback(),
+            GenerationCallback(
+                prompts=experiment.generation_prompts,
+                tokenizer=experiment.tokenizer
+            )
         ],
         dataset_processor=experiment.dataset_processor,
         betas=Betas(**experiment.cfg.betas)
