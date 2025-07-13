@@ -165,6 +165,7 @@ class SFTExperiment(Experiment):
         
         super().__init__(config)
         self.resume_from_checkpoint = self.cfg.resume_from_checkpoint
+        self.generation_prompts = self.cfg.generation.prompts
 
         self.base_model, self.tokenizer = self.prepare_model_and_tokenizer()
         self.dataset_processor = DatasetProcessor(self.tokenizer, self.cfg)
