@@ -1,16 +1,15 @@
 import os
 from typing import List, Dict, Any
-import torch
-from datasets import load_dataset
-from transformers import AutoTokenizer, AutoModelForCausalLM, TrainingArguments, PreTrainedTokenizer, PreTrainedModel
 
-from peft import LoraConfig, get_peft_model
+import torch
+from datasets import DatasetDict, load_dataset
+from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
+from peft.config import LoraConfig, get_peft_model, PeftModel  # type: ignore
+from torch.utils.data import DataLoader
+
 from src.model import ModelWithAuxiliaryHead
 from src.common.default import Experiment
-from omegaconf import OmegaConf
 from src.common.mixed_dataloader import MixtureIterableLoader
-from torch.utils.data import DataLoader
-from peft import PeftModel
 
 
 def create_labels(
@@ -58,8 +57,8 @@ class DatasetProcessor:
         
         """Load and prepare the dataset."""
         
-        main_dataset = load_dataset(self.cfg.dataset.name)
-        calibration_dataset = load_dataset(self.cfg.calibration_dataset.name)
+        main_dataset: DatasetDict = load_dataset(self.cfg.dataset.name)  # type: ignore
+        calibration_dataset: DatasetDict = load_dataset(self.cfg.calibration_dataset.name)  # type: ignore
         
         train_size, eval_size = self.cfg.dataset.train_size, self.cfg.dataset.eval_size
         train_dataset = main_dataset["train"].select(range(train_size))
@@ -73,14 +72,14 @@ class DatasetProcessor:
         eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
         
         train_loader_main = DataLoader(
-            train_dataset,
+            train_dataset, # type: ignore
             batch_size = self.cfg.trainer.per_device_train_batch_size,
             shuffle = True,
             collate_fn = self.data_collate,   
         )
 
         train_loader_calib = DataLoader(
-            train_calib_dataset,
+            train_calib_dataset, # type: ignore
             batch_size = self.cfg.trainer.per_device_train_batch_size,
             shuffle = True,
             collate_fn = self.data_calibration_collate,   
@@ -91,7 +90,7 @@ class DatasetProcessor:
 
         return mix_data_loader, eval_dataset, eval_calib_dataset
 
-    def data_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+    def data_collate(self, features: List[Dict[str, Any]]) -> Dict[str, Any | torch.Tensor]:
         """
         Collate function for the dataset.
         Processes main text, math reasoning, and calculates required indices.
@@ -106,12 +105,12 @@ class DatasetProcessor:
         
         batch = self.tokenizer(full_texts, padding=True, return_tensors="pt")
         labels, starts, ends = create_labels(
-            batch["input_ids"], batch["attention_mask"], self.id_begin_of_simple_talk, self.id_end_of_simple_talk
+            batch["input_ids"], batch["attention_mask"], self.id_begin_of_simple_talk, self.id_end_of_simple_talk  # type: ignore
         )
 
         math_reasoning_texts = [feature["math_reasoning"] for feature in features]
         batch_math = self.tokenizer(math_reasoning_texts)
-        math_reasoning_lengths = torch.tensor([len(row) for row in batch_math['input_ids']], dtype=torch.int64)
+        math_reasoning_lengths = torch.tensor([len(row) for row in batch_math['input_ids']], dtype=torch.int64)  # type: ignore
         
         batch_math_padded = self.tokenizer(math_reasoning_texts, padding=True, return_tensors="pt")
         
@@ -127,7 +126,7 @@ class DatasetProcessor:
             "math_attention_mask": batch_math_padded["attention_mask"],
         }
         
-    def data_calibration_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
+    def data_calibration_collate(self, features: List[Dict[str, Any]]) -> Dict[str, Any | torch.Tensor]:
         
         """
         Collate function for the calibration dataset.
@@ -139,11 +138,11 @@ class DatasetProcessor:
 
         full_texts = [feature["question"] + feature["answer"] for feature in features]
         batch = self.tokenizer(full_texts, padding=True, return_tensors="pt")
-        labels = batch["input_ids"].clone()
+        labels = batch["input_ids"].clone()  # type: ignore
         
         questions = [feature["question"] for feature in features]
         tokenized_questions = self.tokenizer(questions)
-        q_lengths = [len(row) for row in tokenized_questions['input_ids']]
+        q_lengths = [len(row) for row in tokenized_questions['input_ids']]  # type: ignore
 
         for i in range(len(q_lengths)):
             labels[i, :q_lengths[i]] = -100
@@ -190,8 +189,7 @@ class SFTExperiment(Experiment):
         else:
             # Create new LoRA
             print("Creating new LoRA configuration")
-            peft_params = OmegaConf.to_container(self.cfg.peft, resolve=True)
-            peft_config = LoraConfig(**peft_params)
+            peft_config = LoraConfig(**self.cfg.peft)
             self.lora_wrapped = get_peft_model(self.base_model, peft_config)
     
     def add_translator_to_model(self):
