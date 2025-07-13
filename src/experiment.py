@@ -161,10 +161,10 @@ class DatasetProcessor:
 
 class SFTExperiment(Experiment):
     
-    def __init__(self, config: str, resume_from_checkpoint: str = None):
+    def __init__(self, config: str):
         
         super().__init__(config)
-        self.resume_from_checkpoint = resume_from_checkpoint
+        self.resume_from_checkpoint = self.cfg.resume_from_checkpoint
 
         self.base_model, self.tokenizer = self.prepare_model_and_tokenizer()
         self.dataset_processor = DatasetProcessor(self.tokenizer, self.cfg)
@@ -218,9 +218,6 @@ class SFTExperiment(Experiment):
                 lm_head=lm_head,
                 N_max=self.cfg.auxiliary.N_max,
                 num_segments=self.cfg.auxiliary.num_segments,
-                beta_1=self.cfg.auxiliary.beta_1,
-                beta_2=self.cfg.auxiliary.beta_2,
-                beta_3=self.cfg.auxiliary.beta_3,
                 r=self.cfg.auxiliary.segments_rank
             )
         self.add_translator_to_model()
