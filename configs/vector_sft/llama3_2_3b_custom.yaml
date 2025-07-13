@@ -17,9 +17,7 @@ dataset:
 calibration_dataset:
   name: "ExplosionNuclear/new_simple_talks"
 
-probs:
-  p1: 0.8
-  p2: 0.2
+calib_prob: 0.2
 
 model:
   name: ExplosionNuclear/Llama-2.3-3B-Instruct-special
