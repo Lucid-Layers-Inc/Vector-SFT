@@ -18,12 +18,17 @@ def main(config: str):
     training_args = SFTConfig(**experiment.cfg.trainer)
     
     experiment.task_init()
+
+    eval_datasets = [experiment.eval_dataset]
+    if len(experiment.eval_calib_dataset) > 0:
+        eval_datasets.append(experiment.eval_calib_dataset)
+
     trainer = VectorSFTTrainer(
         model=experiment.model,
         processing_class=experiment.tokenizer,
         args=training_args,
         train_dataset=experiment.mix_data_loader,
-        eval_dataset=[experiment.eval_dataset, experiment.eval_calib_dataset],
+        eval_dataset=eval_datasets,
         data_collator= lambda x: x, # batches are already prepeared
         callbacks=[
             ClearMLCallback(experiment.task),
