@@ -15,6 +15,8 @@ from torch.utils.data import Dataset
 class VectorSFTTrainer(SFTTrainer):
     eval_dataset: list[Dataset]
     train_dataset: Dataset
+    optimizer: torch.optim.Optimizer
+    lr_scheduler: torch.optim.lr_scheduler.LRScheduler
     
     def __init__(self, *args, betas: Betas, dataset_processor=None, **kwargs):
         
@@ -104,7 +106,7 @@ class VectorSFTTrainer(SFTTrainer):
                 
                 gathered_losses = {}
                 for key, value in losses_dict_main.items():
-                    gathered_losses[key] = self.gather_function(value).detach()
+                    gathered_losses[key] = self.gather_function(value).detach()  # type: ignore
                 all_metrics_main.append(gathered_losses)
                 
             self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
@@ -130,7 +132,7 @@ class VectorSFTTrainer(SFTTrainer):
                 
                 gathered_losses = {}
                 for key, value in losses_dict_calib.items():
-                    gathered_losses[key] = self.gather_function(value).detach()
+                    gathered_losses[key] = self.gather_function(value).detach() # type: ignore
                 all_metrics_calib.append(gathered_losses)
                 
             self.control = self.callback_handler.on_prediction_step(self.args, self.state, self.control)
@@ -147,17 +149,17 @@ class VectorSFTTrainer(SFTTrainer):
             mean_val = torch.tensor([d[key].item() for d in all_metrics_calib]).mean().item()
             final_metrics[f"{metric_key_prefix}_{key}"] = mean_val
             
-        num_samples = len(eval_dataset_main) + len(eval_dataset_calib)
+        num_samples = len(eval_dataset_main) + len(eval_dataset_calib) # type: ignore
         
         return EvalLoopOutput(
-                predictions=None, 
+                predictions=None, # type: ignore
                 label_ids=None, 
                 metrics=final_metrics, 
                 num_samples=num_samples
             )
         
     
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
+    def _save(self, output_dir: str, state_dict=None):
         
         self.model.save_pretrained(output_dir)
         
