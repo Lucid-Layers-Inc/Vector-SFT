@@ -1,6 +1,7 @@
 import os
 from typing import List, Dict, Any
 
+from omegaconf import OmegaConf
 import torch
 from datasets import DatasetDict, load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
@@ -189,7 +190,7 @@ class SFTExperiment(Experiment):
         else:
             # Create new LoRA
             print("Creating new LoRA configuration")
-            peft_config = LoraConfig(**self.cfg.peft)
+            peft_config = LoraConfig(**OmegaConf.to_container(self.cfg.peft, resolve=True))  # type: ignore
             self.lora_wrapped = get_peft_model(self.base_model, peft_config)
     
     def add_translator_to_model(self):
