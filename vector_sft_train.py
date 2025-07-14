@@ -35,7 +35,8 @@ def main(config: str):
             SaveCustomWeightsOnHubCallback(),
             GenerationCallback(
                 prompts=experiment.generation_prompts,
-                tokenizer=experiment.tokenizer
+                tokenizer=experiment.tokenizer,
+                generation_params=experiment.generation_params
             )
         ],
         dataset_processor=experiment.dataset_processor,

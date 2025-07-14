@@ -6,6 +6,7 @@ from transformers import TrainingArguments, TrainerState, TrainerControl
 from transformers.utils import logging
 from huggingface_hub import upload_file
 from typing import List
+from omegaconf import DictConfig
 
 logger = logging.get_logger(__name__)
 
@@ -43,10 +44,10 @@ class GenerationCallback(TrainerCallback):
     """
     A callback to generate text from a list of prompts at the end of each epoch.
     """
-    def __init__(self, prompts: List[str], tokenizer: PreTrainedTokenizer):
-        
+    def __init__(self, prompts: List[str], tokenizer: PreTrainedTokenizer, generation_params: DictConfig):
         self.prompts = prompts
         self.tokenizer = tokenizer
+        self.generation_params = generation_params
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -55,29 +56,21 @@ class GenerationCallback(TrainerCallback):
         print(f"\n--- Generating samples at the end of epoch {int(state.epoch)} ---")
         
         model = kwargs["model"]
-        model.eval() # Set model to evaluation mode for generation
+        
+       
         
         for i, prompt in enumerate(self.prompts):
-            inputs = self.tokenizer(prompt, return_tensors="pt").to(model.device)
             
-            with torch.no_grad():
+            outputs = model.generate_text(
+                tokenizer=self.tokenizer, 
+                prompt=prompt,
+                math_flag=True, 
+                **self.generation_params
+            )
+            
+            #print(f"Prompt: {prompt}")
+            print(f"Generated answer for question {i}: {outputs['simple_talk']}")
+            if outputs['math_text'] is not None:
+                print(f"Hidden thoughts: {outputs['math_text']}")
                 
-                outputs = model.base_model.generate(
-                    **inputs,
-                    max_new_tokens=300,
-                    #temperature=0.7,
-                    #top_p=0.9,
-                    do_sample=False,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    pad_token_id=self.tokenizer.pad_token_id,
-                )
-            
-            input_len = inputs["input_ids"].shape[1]
-            generated_ids = outputs[0][input_len:]
-            generated_text = self.tokenizer.decode(generated_ids)
-            
-            #print(f"Question: {prompt}")
-            print(f"Generated answer for question {i}: {generated_text}")
-            print("-------------------------------------------")
-        
-        model.train() 
+            print("-------------------------------------------") 
