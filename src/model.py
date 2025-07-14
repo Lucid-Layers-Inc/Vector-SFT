@@ -130,6 +130,30 @@ class ModelWithAuxiliaryHead(nn.Module):
                 "math_logits": math_logits,
             }
         
+    @torch.no_grad()
+    def generate_text(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
+        
+        
+        self.eval()
+        
+        inputs = tokenizer(prompt, return_tensors="pt").to(self.device)
+        outputs = self.base_model.generate(**inputs, **generation_kwargs)
+        
+        # generate simple talk
+        input_len = inputs["input_ids"].shape[1]
+        generated_ids = outputs[0][input_len:]
+        generated_text = tokenizer.decode(generated_ids)
+        
+        # generate hidden thoughts if needed
+        math_text = None
+        if math_flag: 
+            math_text = self._extract_hidden_thoughts(tokenizer, outputs[0])
+            
+        return {
+            "simple_talk": generated_text,
+            "math_text" : math_text
+        }
+
      
     def save_pretrained(self, save_directory: str):
         
@@ -137,6 +161,42 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.base_model.save_pretrained(save_directory)
         self.translator.save_pretrained(save_directory)
         
+    def _extract_hidden_thoughts(self, tokenizer, input_ids):
+        
+        begin_simple_talk_id = tokenizer.convert_tokens_to_ids('<simple_talk>')
+        end_simple_talk_id = tokenizer.convert_tokens_to_ids('</simple_talk>')
+
+        indices = torch.arange(len(input_ids), device=self.device)
+        start_indices = indices[input_ids == begin_simple_talk_id]
+        end_indices = indices[input_ids == end_simple_talk_id]
+        
+        math_text = None
+        
+        if len(start_indices) > 0 and len(end_indices) > 0:
+            
+            start_idx = start_indices[0].item()
+            end_idx = end_indices[0].item()
+
+            if end_idx - start_idx > 1:
+                
+                forward_outputs = self.forward(input_ids=input_ids.unsqueeze(0))
+                last_hidden_state = forward_outputs['last_hidden_state'].squeeze(0) # Shape: [seq_len, hidden_size]
+                
+                
+                math_hidden_states = last_hidden_state[start_idx: end_idx + 1]
+                
+                max_len_of_math_text = min(math_hidden_states.shape[0], self.N_max)
+                
+                math_indices = torch.arange(max_len_of_math_text, device=self.device)
+                segment_ids = self.segment_indices[math_indices] 
+                math_hiddens = self.translator(math_hidden_states, segment_ids)
+                math_logits = self.lm_head(math_hiddens)
+                math_ids = torch.argmax(math_logits, dim=-1)
+
+                math_text = tokenizer.decode(math_ids)
+            
+        return math_text
+            
 
     def get_input_embeddings(self):
         return self.base_model.get_input_embeddings()
