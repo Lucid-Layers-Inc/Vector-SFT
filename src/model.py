@@ -185,10 +185,15 @@ class ModelWithAuxiliaryHead(nn.Module):
                 
                 math_hidden_states = last_hidden_state[start_idx: end_idx + 1]
                 
+                if math_hidden_states.dtype == torch.float32:
+                    print("WHAAAAT")
+                    math_hidden_states = math_hidden_states.to(torch.bfloat16)
+
                 max_len_of_math_text = min(math_hidden_states.shape[0], self.N_max)
                 
                 math_indices = torch.arange(max_len_of_math_text, device=self.device)
                 segment_ids = self.segment_indices[math_indices] 
+                
                 math_hiddens = self.translator(math_hidden_states, segment_ids)
                 math_logits = self.lm_head(math_hiddens)
                 math_ids = torch.argmax(math_logits, dim=-1)
