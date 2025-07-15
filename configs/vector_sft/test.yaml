@@ -1,0 +1,76 @@
+project:
+  name: "Experiment1"
+  experiment_name: "linear-systems"
+  hf_checkpoint: "ExplosionNuclear/Experiment1"
+
+clearml:
+  project_name: ${project.name}
+  task_name: ${project.experiment_name}
+  output_uri: false
+
+dataset:
+  name: "ExplosionNuclear/ExpNew7"
+  train_size: 200
+  eval_size: 100
+  max_length: 800
+  p: 1.0  # probability for randomized formatting
+
+model:
+  name: "meta-llama/Llama-3.2-3B-Instruct"
+  dtype: "bfloat16"
+  device_map: "cuda:0"
+  attn_implementation: "flash_attention_2"
+  special_tokens:
+    - "<simple_talk>"
+    - "</simple_talk>"
+
+auxiliary:
+  N_max: 300 # maximal length of mathematical proof (actually it's smaller then that)
+  num_segments: 5
+  beta_1: 0.5
+  beta_2: 0.5
+  beta_3: 2
+  segments_rank: 2
+
+
+peft:
+  r: 4
+  lora_alpha: 16
+  lora_dropout: 0.05
+  bias: "lora_only"
+  task_type: "CAUSAL_LM"
+  use_rslora: false
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "gate_proj"
+    - "up_proj"
+    - "down_proj"
+    - "o_proj"
+
+trainer:
+  output_dir: "./VectorSFT-checkpoints"
+  num_train_epochs: 8
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 2
+  learning_rate: 3e-4
+  weight_decay: 0.01
+  lr_scheduler_type: "linear"
+  warmup_steps: 3
+  logging_steps: 2
+  save_steps: 10000
+  bf16: true
+  tf32: true
+  gradient_checkpointing: false
+  optim: "adamw_torch"
+  report_to: "none"
+  max_grad_norm: 0.3
+  ddp_find_unused_parameters: false
+  push_to_hub: false
+  hub_model_id: ${project.hf_checkpoint}
+  save_strategy: "no"
+  eval_strategy: "epoch"
+  remove_unused_columns: false
+  dataset_kwargs:
+    skip_prepare_dataset: true
