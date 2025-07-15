@@ -110,7 +110,7 @@ class SFTExperiment(Experiment):
         # Initialize tokenizer
         
         tokenizer = AutoTokenizer.from_pretrained(self.cfg.model.name)
-        tokenizer.add_special_tokens({"additional_special_tokens": list(self.cfg.model.special_tokens)})
+        #tokenizer.add_special_tokens({"additional_special_tokens": list(self.cfg.model.special_tokens)})
 
         # Initialize model
         
@@ -121,7 +121,7 @@ class SFTExperiment(Experiment):
             attn_implementation=self.cfg.model.attn_implementation,
         )
         
-        base_model.resize_token_embeddings(len(tokenizer))
+        #base_model.resize_token_embeddings(len(tokenizer))
 
 
         return base_model, tokenizer
