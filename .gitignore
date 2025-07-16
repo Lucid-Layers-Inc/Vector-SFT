@@ -8,8 +8,9 @@ __pycache__/
 /**/unsloth_compiled_cache
 
 /**/.ipynb_checkpoints/
-checkpoints/
 .cache/
+
+**/*checkpoints*/
 
 models/
 
