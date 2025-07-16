@@ -1,7 +1,7 @@
 project:
-  name: "Experiment1"
+  name: "Experiment1-test"
   experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment1"
+  hf_checkpoint: "ExplosionNuclear/Experiment1-test"
 
 clearml:
   project_name: ${project.name}
@@ -13,7 +13,12 @@ dataset:
   train_size: 200
   eval_size: 100
   max_length: 800
-  p: 1.0  # probability for randomized formatting
+
+
+calibration_dataset:
+  name: "ExplosionNuclear/new_simple_talks"
+
+calib_prob: 0
 
 model:
   #name: "meta-llama/Llama-3.2-3B-Instruct"

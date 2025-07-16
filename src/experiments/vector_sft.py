@@ -7,6 +7,8 @@ from peft import LoraConfig, get_peft_model
 from src.experiments.model import ModelWithAuxiliaryHead
 from src.experiments.default import Experiment
 from omegaconf import OmegaConf
+from torch.utils.data import DataLoader
+from src.common.mixed_dataloader import MixtureIterableLoader
 
 
 def create_labels(
@@ -46,16 +48,48 @@ class DatasetProcessor:
         self.id_begin_of_simple_talk = self.tokenizer.convert_tokens_to_ids('<simple_talk>')
         self.id_end_of_simple_talk = self.tokenizer.convert_tokens_to_ids('</simple_talk>')
 
-
+    
     def load_and_prepare(self):
+        
         """Load and prepare the dataset."""
-        dataset = load_dataset(self.cfg.dataset.name,)
-
+        
+        main_dataset: DatasetDict = load_dataset(self.cfg.dataset.name)  # type: ignore
+        calibration_dataset: DatasetDict = load_dataset(self.cfg.calibration_dataset.name)  # type: ignore
+        
         train_size, eval_size = self.cfg.dataset.train_size, self.cfg.dataset.eval_size
-        train_dataset = dataset["train"].select(range(train_size))
-        eval_dataset = dataset["train"].select(range(train_size, train_size + eval_size))
+        train_dataset = main_dataset["train"].select(range(train_size))
+        eval_dataset = main_dataset["train"].select(range(train_size, train_size + eval_size))
+        
+        train_loader_main = DataLoader(
+            train_dataset, # type: ignore
+            batch_size = self.cfg.trainer.per_device_train_batch_size,
+            shuffle = True,
+            collate_fn = self.data_collate,   
+        )
 
-        return train_dataset, eval_dataset
+        if self.cfg.calib_prob > 0:
+            train_calib_size = int(len(train_dataset) * self.cfg.calib_prob)
+            eval_calib_size = int(len(eval_dataset) * self.cfg.calib_prob)
+            
+            train_calib_dataset = calibration_dataset["train"].select(range(train_calib_size))
+            eval_calib_dataset = calibration_dataset["train"].select(range(train_calib_size, train_calib_size + eval_calib_size))
+
+            train_loader_calib = DataLoader(
+                train_calib_dataset, # type: ignore
+                batch_size = self.cfg.trainer.per_device_train_batch_size,
+                shuffle = True,
+                collate_fn = self.data_calibration_collate,   
+            )
+            
+            mix_data_loader = MixtureIterableLoader(
+                train_loader_main, train_loader_calib, self.cfg.calib_prob
+            )
+        else:
+            mix_data_loader = train_loader_main
+            eval_calib_dataset = calibration_dataset["train"].select(range(0))
+
+
+        return mix_data_loader, eval_dataset, eval_calib_dataset
 
     def data_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
         """
@@ -152,9 +186,6 @@ class SFTExperiment(Experiment):
             )
 
     def prepare_datasets(self) -> callable:
-        """
-        Loads and prepares the dataset. Returns the data collator as callable function.
-        Returns: The data collator function.
-        """
-        self.train_dataset, self.eval_dataset = self.dataset_processor.load_and_prepare()
-        return self.dataset_processor.data_collate
+       
+        self.mix_data_loader, self.eval_dataset, self.eval_calib_dataset = self.dataset_processor.load_and_prepare()
+        

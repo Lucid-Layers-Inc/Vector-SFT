@@ -8,6 +8,10 @@ from typing import List, Dict, Any
 
 class VectorSFTTrainer(SFTTrainer):
     
+    def __init__(self, *args, **kwargs):
+        self.dataset_processor = kwargs.pop("dataset_processor", None)
+        super().__init__(*args, **kwargs)
+
     def compute_loss(self, model, inputs, num_items_in_batch, return_outputs=False):
         """
         Custom compute_loss method to handle multiple losses returned by the model's forward pass.

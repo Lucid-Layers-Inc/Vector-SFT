@@ -5,9 +5,18 @@ from trl import SFTTrainer
 from typing import Optional
 from transformers.trainer_utils import EvalLoopOutput
 from typing import List, Dict, Any
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
 class VectorSFTTrainer(SFTTrainer):
     
+    def __init__(self, *args, dataset_processor=None, **kwargs):
+        
+            super().__init__(*args, **kwargs)
+            if dataset_processor is None:
+                raise ValueError("VectorSFTTrainer requires a `dataset_processor`.")
+            self.dataset_processor = dataset_processor
+            
     def compute_loss(self, model, inputs, num_items_in_batch, return_outputs=False):
         """
         Custom compute_loss method to handle multiple losses returned by the model's forward pass.
@@ -56,6 +65,14 @@ class VectorSFTTrainer(SFTTrainer):
         
         model = self.model
         model.eval()
+        
+        eval_dataset_main = self.eval_dataset[0] 
+        eval_loader_main = DataLoader(
+            eval_dataset_main,
+            batch_size = self.args.per_device_eval_batch_size,
+            shuffle = False,
+            collate_fn = self.dataset_processor.data_collate,   
+        )
 
         all_losses = []
         all_math_losses = []
@@ -63,7 +80,7 @@ class VectorSFTTrainer(SFTTrainer):
         all_final_answer_losses = []
         all_A_losses_steps = []
         
-        for _, inputs in enumerate(dataloader):
+        for _, inputs in enumerate(eval_loader_main):
             
             inputs = self._prepare_inputs(inputs)
 
@@ -124,8 +141,14 @@ class VectorSFTTrainer(SFTTrainer):
                               label_ids=None, 
                               metrics=metrics, 
                               num_samples=len(dataloader))
+        
+    def get_train_dataloader(self) -> Dataset:
+        """
+        Overrides the standard method.
+        """
+        return self.train_dataset
 
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        continue
+    #def _save(self, output_dir: Optional[str] = None, state_dict=None):
+        
     #     super()._save(output_dir, state_dict)
     #     self.model.save_pretrained(output_dir)
