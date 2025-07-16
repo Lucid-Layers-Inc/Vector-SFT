@@ -32,3 +32,6 @@ dump_data:
 		--exclude "**/.DS_Store" --exclude "*.git*" --exclude "**/.Trash/*" \
 		--exclude "*.idea*" --exclude "*vscode*" --exclude "**/.git/*" \
 		--exclude "hub/*" --exclude "models/*" --exclude "**/dataset/**/*" --exclude "*SFT*/**" --exclude "*.cache/**"
+
+craken:
+	python vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
