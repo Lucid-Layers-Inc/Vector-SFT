@@ -16,7 +16,8 @@ dataset:
   p: 1.0  # probability for randomized formatting
 
 model:
-  name: "meta-llama/Llama-3.2-3B-Instruct"
+  #name: "meta-llama/Llama-3.2-3B-Instruct"
+  name: "ExplosionNuclear/Llama-2.3-3B-Instruct-special"
   dtype: "bfloat16"
   device_map: "cuda:0"
   attn_implementation: "flash_attention_2"
