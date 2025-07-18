@@ -8,6 +8,13 @@ from typing import List, Dict, Any
 
 class VectorSFTTrainer(SFTTrainer):
     
+    def __init__(self, *args, dataset_processor=None, **kwargs):
+        
+            super().__init__(*args, **kwargs)
+            if dataset_processor is None:
+                raise ValueError("VectorSFTTrainer requires a `dataset_processor`.")
+            self.dataset_processor = dataset_processor
+            
     def compute_loss(self, model, inputs, num_items_in_batch, return_outputs=False):
         """
         Custom compute_loss method to handle multiple losses returned by the model's forward pass.
@@ -125,7 +132,14 @@ class VectorSFTTrainer(SFTTrainer):
                               metrics=metrics, 
                               num_samples=len(dataloader))
 
+    def get_train_dataloader(self):
+        """
+        Overrides the standard method.
+        """
+        return self.train_dataset
+
+
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        continue
-    #     super()._save(output_dir, state_dict)
-    #     self.model.save_pretrained(output_dir)
+        
+        super()._save(output_dir, state_dict)
+        self.model.save_pretrained(output_dir)

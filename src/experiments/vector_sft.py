@@ -7,6 +7,7 @@ from peft import LoraConfig, get_peft_model
 from src.experiments.model import ModelWithAuxiliaryHead
 from src.experiments.default import Experiment
 from omegaconf import OmegaConf
+from torch.utils.data import DataLoader, RandomSampler
 
 
 def create_labels(
@@ -48,14 +49,28 @@ class DatasetProcessor:
 
 
     def load_and_prepare(self):
+        
         """Load and prepare the dataset."""
+        
         dataset = load_dataset(self.cfg.dataset.name,)
 
         train_size, eval_size = self.cfg.dataset.train_size, self.cfg.dataset.eval_size
         train_dataset = dataset["train"].select(range(train_size))
         eval_dataset = dataset["train"].select(range(train_size, train_size + eval_size))
+        
+        train_loader_main = DataLoader(
+            train_dataset, # type: ignore
+            batch_size = self.cfg.trainer.per_device_train_batch_size,
+            sampler= RandomSampler(train_dataset),
+            collate_fn = self.data_collate,   
+        )
 
-        return train_dataset, eval_dataset
+        
+        mix_data_loader = train_loader_main
+        #eval_calib_dataset = calibration_dataset["train"].select(range(0))
+
+
+        return mix_data_loader, eval_dataset
 
     def data_collate(self, features: List[Dict[str, Any]]) -> Dict[str, torch.Tensor]:
         """
@@ -156,5 +171,5 @@ class SFTExperiment(Experiment):
         Loads and prepares the dataset. Returns the data collator as callable function.
         Returns: The data collator function.
         """
-        self.train_dataset, self.eval_dataset = self.dataset_processor.load_and_prepare()
+        self.mix_data_loader, self.eval_dataset = self.dataset_processor.load_and_prepare()
         return self.dataset_processor.data_collate

@@ -59,7 +59,7 @@ trainer:
   lr_scheduler_type: "linear"
   warmup_steps: 100
   logging_steps: 10
-  save_steps: 100
+  save_steps: 10000
   bf16: true
   tf32: true
   gradient_checkpointing: false
