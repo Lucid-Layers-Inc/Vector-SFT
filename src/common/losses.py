@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class Betas(BaseModel): 
+    beta_0: float = 0.1
     beta_1: float = 0.5
     beta_2: float = 0.5
     beta_3: float = 0.4
@@ -37,12 +38,12 @@ def calculate_all_main_losses(
     Main function to calculate all the losses. Gather all of them into one dict. 
     """
         
-    simple_talk_loss, final_answer_loss = compute_simple_and_final_answer_loss(
+    simple_talk_loss, final_answer_loss, delimeters_loss = compute_simple_and_final_answer_loss(
         outputs["logits"], inputs["input_ids"], inputs["attention_mask"], inputs["starts"], inputs["ends"]
     )
     
     math_loss = compute_math_loss(outputs["math_logits"], inputs["math_labels"], inputs["math_attention_mask"])
-    total_loss = betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
+    total_loss = betas.beta_0 * delimeters_loss + betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
 
     return {
         "total_loss": total_loss,
@@ -60,7 +61,7 @@ def compute_simple_and_final_answer_loss(
         device = logits.device
         batch_size, seq_len, _ = logits.shape
         
-        # Reshape loss back to [B, S-1] to apply masks
+        # Reshape loss back to [batch_size, seq_len - 1] to apply masks
         loss_per_token = loss.view(batch_size, seq_len - 1)
 
         # Create indices grid for the SHIFTED sequence
@@ -75,12 +76,14 @@ def compute_simple_and_final_answer_loss(
         # So, we adjust the masks accordingly.
         mask_simple_talk = (shifted_indices >= starts_exp - 1) & (shifted_indices <= ends_exp - 1)
         mask_final_answer = (shifted_indices >= ends_exp) & (shifted_indices < real_lengths - 1)
+        mask_simple_talk_delimeters = (shifted_indices == starts_exp - 1) | (shifted_indices == ends_exp - 1)
 
         # Calculate mean loss for each part, handling empty masks to avoid NaN
         simple_talk_loss = loss_per_token[mask_simple_talk].mean() if mask_simple_talk.any() else torch.tensor(0.0, device=device)
         final_answer_loss = loss_per_token[mask_final_answer].mean() if mask_final_answer.any() else torch.tensor(0.0, device=device)
+        delimeters_loss = loss_per_token[mask_simple_talk_delimeters].mean() if mask_simple_talk_delimeters.any() else torch.tensor(0.0, device=device)
         
-        return simple_talk_loss, final_answer_loss
+        return simple_talk_loss, final_answer_loss, delimeters_loss
     
     
 def compute_math_loss(math_logits, math_input_ids, math_attention_mask):
