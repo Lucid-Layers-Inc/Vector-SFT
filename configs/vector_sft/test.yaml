@@ -13,12 +13,12 @@ dataset:
   train_size: 60
   eval_size: 100
   max_length: 800
-  p: 1.0  # probability for randomized formatting
+
 
 calibration_dataset:
   name: "ExplosionNuclear/simple_talks"
 
-calib_prob: 0
+calib_prob: 0.1
 
     
 
@@ -53,6 +53,7 @@ auxiliary:
 
 
 betas:
+  beta_0: 0.1
   beta_1: 0.5
   beta_2: 0.5
   beta_3: 2
