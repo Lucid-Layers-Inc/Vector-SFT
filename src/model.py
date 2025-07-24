@@ -5,6 +5,8 @@ import math
 import os
 from transformers import PreTrainedModel
 from peft import PeftModel  # type: ignore
+import re
+
 
 
 class Translator(nn.Module):    
@@ -131,29 +133,68 @@ class ModelWithAuxiliaryHead(nn.Module):
             }
         
     @torch.no_grad()
-    def generate_text(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
+    def generate(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
         
+        if math_flag:
+            return self.generate_with_various_lengths_of_simple_talk(tokenizer, prompt, **generation_kwargs)
+        else:
+            self.eval()
+            general_answer = self._generate_text(tokenizer, prompt, **generation_kwargs)
         
-        self.eval()
+            return {
+                "simple_talk": general_answer,
+                "math_text" : None
+            }
+
+    @torch.no_grad()
+    def _generate_text(self, tokenizer, prompt, **generation_kwargs):
         
         inputs = tokenizer(prompt, return_tensors="pt").to(self.device)
         outputs = self.base_model.generate(**inputs, **generation_kwargs)
-        
-        # generate simple talk
         input_len = inputs["input_ids"].shape[1]
         generated_ids = outputs[0][input_len:]
-        generated_text = tokenizer.decode(generated_ids)
         
-        # generate hidden thoughts if needed
-        math_text = None
-        if math_flag: 
-            math_text = self._extract_hidden_thoughts(tokenizer, outputs[0])
-            
-        return {
-            "simple_talk": generated_text,
-            "math_text" : math_text
-        }
+        return tokenizer.decode(generated_ids, skip_special_tokens=True)
 
+    @torch.no_grad()
+    def generate_with_various_lengths_of_simple_talk(self, tokenizer, prompt: str, **generation_kwargs):
+    
+        self.eval()
+
+        # 1. Initial generation
+        simple_talk = self._generate_text(tokenizer, prompt, **generation_kwargs)
+   
+        # 2. Preprocess simple_talk
+        last_period_pos = simple_talk.rfind('.')
+        if last_period_pos != -1:
+            simple_talk = simple_talk[:last_period_pos + 1]
+        
+        sentences = [s.strip() + '.' for s in simple_talk.split('.') if s.strip()]
+        
+        # 3. Iterative generation and logging
+        answers = []
+        hiddens = []
+        generation_kwargs["max_new_tokens"] = 20
+        
+        for i in range(1, len(sentences) + 1):
+            simple_talk_cut = "<simple_talk>" + " ".join(sentences[:i]) + "</simple_talk>" 
+            prompt_with_simple_talk = prompt + simple_talk_cut
+            math_answer = self._generate_text(tokenizer, prompt_with_simple_talk, **generation_kwargs)
+            math_thoughts = self._extract_hidden_thoughts(tokenizer, prompt_with_simple_talk)
+            answers.append(simple_talk_cut + math_answer)
+            hiddens.append(math_thoughts)
+
+        with open("answers.log", "a") as f:
+            for answer, hidden in zip(answers, hiddens):
+                f.write(f"Answer:\n{answer}\n")
+                f.write(f"Hidden:\n{hidden}\n")
+                f.write("-"*50 + "\n")
+                f.write("="*50 + "\n")
+
+        return {
+            "simple_talk": simple_talk,
+            "math_text": hiddens[-1] 
+        }
      
     def save_pretrained(self, save_directory: str):
         
@@ -161,8 +202,9 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.base_model.save_pretrained(save_directory)
         self.translator.save_pretrained(save_directory)
         
-    def _extract_hidden_thoughts(self, tokenizer, input_ids):
+    def _extract_hidden_thoughts(self, tokenizer, prompt_with_simple_talk):
         
+        input_ids = tokenizer(prompt_with_simple_talk, return_tensors="pt").to(self.device)
         begin_simple_talk_id = tokenizer.convert_tokens_to_ids('<simple_talk>')
         end_simple_talk_id = tokenizer.convert_tokens_to_ids('</simple_talk>')
 
