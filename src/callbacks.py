@@ -44,8 +44,9 @@ class GenerationCallback(TrainerCallback):
     """
     A callback to generate text from a list of prompts at the end of each epoch.
     """
-    def __init__(self, prompts: List[str], tokenizer: PreTrainedTokenizer, generation_params: DictConfig):
-        self.prompts = prompts
+    def __init__(self, prompts: DictConfig, tokenizer: PreTrainedTokenizer, generation_params: DictConfig):
+        self.instruction_prompts = prompts.instruction_prompts
+        self.general_prompts = prompts.general_prompts
         self.tokenizer = tokenizer
         self.generation_params = generation_params
         if self.tokenizer.pad_token is None:
@@ -57,20 +58,24 @@ class GenerationCallback(TrainerCallback):
         
         model = kwargs["model"]
         
-       
+        all_prompts = [
+            (self.instruction_prompts, True),
+            (self.general_prompts, False)
+        ]
         
-        for i, prompt in enumerate(self.prompts):
-            
-            outputs = model.generate_text(
-                tokenizer=self.tokenizer, 
-                prompt=prompt,
-                math_flag=True, 
-                **self.generation_params
-            )
-            
-            #print(f"Prompt: {prompt}")
-            print(f"Generated answer for question {i}: {outputs['simple_talk']}")
-            if outputs['math_text'] is not None:
-                print(f"Hidden thoughts: {outputs['math_text']}")
+        for prompts, math_flag in all_prompts:
+            for i, prompt in enumerate(prompts):
                 
-            print("-------------------------------------------") 
+                outputs = model.generate(
+                    tokenizer=self.tokenizer, 
+                    prompt=prompt,
+                    math_flag=math_flag, 
+                    **self.generation_params
+                )
+                
+                #print(f"Prompt: {prompt}")
+                print(f"Generated answer for question {i}: {outputs['simple_talk']}")
+                if outputs['math_text'] is not None:
+                    print(f"Hidden thoughts: {outputs['math_text']}")
+                    
+                print("-------------------------------------------") 
