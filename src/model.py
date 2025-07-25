@@ -7,6 +7,8 @@ from transformers import PreTrainedModel
 from peft import PeftModel  # type: ignore
 import re
 
+import re
+
 
 
 class Translator(nn.Module):    
@@ -134,7 +136,21 @@ class ModelWithAuxiliaryHead(nn.Module):
         
     @torch.no_grad()
     def generate(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
+    def generate(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
         
+        if math_flag:
+            return self.generate_with_various_lengths_of_simple_talk(tokenizer, prompt, **generation_kwargs)
+        else:
+            self.eval()
+            general_answer = self._generate_text(tokenizer, prompt, **generation_kwargs)
+        
+            return {
+                "simple_talk": general_answer,
+                "math_text" : None
+            }
+
+    @torch.no_grad()
+    def _generate_text(self, tokenizer, prompt, **generation_kwargs):
         if math_flag:
             return self.generate_with_various_lengths_of_simple_talk(tokenizer, prompt, **generation_kwargs)
         else:
@@ -209,6 +225,8 @@ class ModelWithAuxiliaryHead(nn.Module):
                 f.write("="*50 + "\n")
 
         return {
+            "simple_talk": simple_talk,
+            "math_text": hiddens[-1] 
             "simple_talk": simple_talk,
             "math_text": hiddens[-1] 
         }

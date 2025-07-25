@@ -9,7 +9,7 @@ clearml:
   output_uri: false
 
 dataset:
-  name: "ExplosionNuclear/ExpNew7"
+  name: "ExplosionNuclear/ExpNew8"
   train_size: 12500
   eval_size: 2000
   max_length: 800
