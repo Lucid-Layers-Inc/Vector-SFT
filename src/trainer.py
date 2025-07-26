@@ -1,15 +1,14 @@
 import os
 import json
+from typing import List, Optional
 
 import torch
+from torch.utils.data import DataLoader, Dataset
 from trl import SFTTrainer
-from typing import Optional
 from transformers.trainer_utils import EvalLoopOutput
-from typing import List
-from src.common.losses import Betas, calculate_all_main_losses, plain_cross_entropy_loss
-from torch.utils.data import DataLoader
 from transformers.trainer import TrainerState
-from torch.utils.data import Dataset
+
+from src.common.losses import (Betas, CollateOutput, calculate_all_main_losses, plain_cross_entropy_loss)
 
 
 class VectorSFTTrainer(SFTTrainer):
@@ -18,25 +17,21 @@ class VectorSFTTrainer(SFTTrainer):
     optimizer: torch.optim.Optimizer
     lr_scheduler: torch.optim.lr_scheduler.LRScheduler
     
-    def __init__(self, *args, betas: Betas, dataset_processor=None, **kwargs):
+    def __init__(self, *args, dataset_processor, betas: Betas, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dataset_processor = dataset_processor
+        self.betas = betas
         
-            super().__init__(*args, **kwargs)
-            if dataset_processor is None:
-                raise ValueError("VectorSFTTrainer requires a `dataset_processor`.")
-            self.dataset_processor = dataset_processor
-            self.betas = betas
-        
-    def compute_loss(self, model, inputs, num_items_in_batch=None, return_outputs=False):
+    def compute_loss(self, model, inputs: CollateOutput, num_items_in_batch=None, return_outputs=False):
         
         """
         Custom compute_loss method to handle multiple losses.
         Accumulates all losses into `self._metrics` for later logging.
         """
         
-        outputs = model(**inputs)
-        
-        source = inputs['source_label'][0].item()
-        if source == 0:
+        outputs = model(**inputs.model_dump())
+                
+        if inputs.math_labels:
             losses_dict = calculate_all_main_losses(outputs, inputs, self.betas)
             current_loss = losses_dict["total_loss"]
         else: 
