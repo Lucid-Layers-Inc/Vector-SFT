@@ -1,11 +1,8 @@
 import os
-import pandas as pd
-import torch
-from transformers import TrainerCallback, PreTrainedTokenizer
-from transformers import TrainingArguments, TrainerState, TrainerControl
+
+from transformers import TrainingArguments, TrainerState, TrainerControl, TrainerCallback, PreTrainedTokenizer
 from transformers.utils import logging
 from huggingface_hub import upload_file
-from typing import List
 from omegaconf import DictConfig
 
 logger = logging.get_logger(__name__)
@@ -39,6 +36,7 @@ class SaveCustomWeightsOnHubCallback(TrainerCallback):
                 repo_type="model",
                 commit_message=f"Upload custom weights for step {state.global_step}",
             )
+
 
 class GenerationCallback(TrainerCallback):
     """
