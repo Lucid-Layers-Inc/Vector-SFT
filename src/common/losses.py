@@ -3,6 +3,14 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 
 
+class CollateOutput(BaseModel):
+    input_ids: torch.Tensor
+    labels: torch.Tensor
+    attention_mask: torch.Tensor | None = None
+    math_labels: torch.Tensor | None = None
+    final_answer_labels: torch.Tensor | None = None
+
+
 class Betas(BaseModel): 
     beta_0: float = 0.1
     beta_1: float = 0.5
@@ -10,12 +18,12 @@ class Betas(BaseModel):
     beta_3: float = 0.4
     
 
-def plain_cross_entropy_loss(logits: torch.Tensor, input_ids: torch.Tensor, reduction='mean'):
+def plain_cross_entropy_loss(logits: torch.Tensor, labels: torch.Tensor, reduction='mean'):
     _, _, vocab_size = logits.shape
 
     # Shift logits and labels for autoregressive training
     shifted_logits = logits[:, :-1, :].contiguous()
-    shifted_labels = input_ids[:, 1:].contiguous()
+    shifted_labels = labels[:, 1:].contiguous()
 
     # Flatten for cross-entropy
     logits_flat = shifted_logits.reshape(-1, vocab_size)
@@ -30,20 +38,18 @@ def plain_cross_entropy_loss(logits: torch.Tensor, input_ids: torch.Tensor, redu
 
 def calculate_all_main_losses(
     outputs: dict[str, torch.Tensor], 
-    inputs: dict[str, torch.Tensor], 
+    inputs: CollateOutput, 
     betas: Betas
     ) -> dict[str, torch.Tensor]:
     
     """
     Main function to calculate all the losses. Gather all of them into one dict. 
     """
-        
-    simple_talk_loss, final_answer_loss = compute_simple_and_final_answer_loss(
-        outputs["logits"], inputs["input_ids"], inputs["attention_mask"], inputs["starts"], inputs["ends"]
-    )
     
-    math_loss = compute_math_loss(outputs["math_logits"], inputs["math_labels"], inputs["math_attention_mask"])
-    total_loss = betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
+    simple_talk_loss = plain_cross_entropy_loss(outputs["logits"], inputs.labels)
+    final_answer_loss = plain_cross_entropy_loss(outputs["logits"], inputs.final_answer_labels)
+    math_loss = plain_cross_entropy_loss(outputs["math_logits"], inputs.math_labels)
+    total_loss = simple_talk_loss*betas.beta_1 + final_answer_loss*betas.beta_2 + math_loss*betas.beta_3
 
     return {
         "total_loss": total_loss,
@@ -52,9 +58,8 @@ def calculate_all_main_losses(
         "final_answer_loss": final_answer_loss
     }
 
-def compute_simple_and_final_answer_loss(
-    logits: torch.Tensor, input_ids: torch.Tensor, 
-    attention_mask: torch.Tensor, starts: torch.Tensor, ends: torch.Tensor
+def compute_simple_loss(
+    logits: torch.Tensor, input_ids: torch.Tensor,  
     ) -> tuple[torch.Tensor, torch.Tensor]:
         
         loss = plain_cross_entropy_loss(logits, input_ids, reduction='none')

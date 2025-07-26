@@ -1,95 +1,53 @@
 import torch
 import torch.nn as nn
 from typing import Optional
-import math
 import os
-from transformers import PreTrainedModel
+import copy
+from transformers import LlamaConfig, PreTrainedModel
 from peft import PeftModel  # type: ignore
 
+from transformers.models.llama.modeling_llama import LlamaMLP
 
 
-class Translator(nn.Module):    
+class Translator(nn.Module):
+    weight_path = "custom_trained_weights.pt"    
     
-    def __init__(self, num_segments, hidden_size, rank, model_dtype, N_max):
+    def __init__(self, config: LlamaConfig, rank: int | None = None):
         super().__init__()
         
-        self.N_max = N_max
-        self.num_segments = num_segments
-        
-        self.A_matrices = nn.Parameter(torch.randn(num_segments, hidden_size, rank, dtype=model_dtype))
-        self.B_matrices = nn.Parameter(torch.randn(num_segments, rank, hidden_size, dtype=model_dtype))
-        self.bias = nn.Parameter(torch.zeros(num_segments, hidden_size, dtype=model_dtype))
-        
-        self.weight_path = "custom_trained_weights.pt"
+        new_config = copy.deepcopy(config)
+        new_config.intermediate_size = new_config.intermediate_size // 4 if rank is None else rank
+        self.mlp = LlamaMLP(new_config)
     
     def init_weights(self):
-        nn.init.xavier_uniform_(self.A_matrices)
-        nn.init.xavier_uniform_(self.B_matrices)
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                nn.init.xavier_uniform_(param)
     
-    def forward(self, math_hidden_states, segment_ids):
-        
-        # Memory-efficient implementation
-        gathered_A = self.A_matrices[segment_ids]  # Shape: [all_math, H, r]
-        gathered_B = self.B_matrices[segment_ids]  # Shape: [all_math, r, H]
-        
-        # 1. Compute intermediate_states = B @ h
-        intermediate_states = torch.bmm(
-            gathered_B,                      # [all_math, r, H]
-            math_hidden_states.unsqueeze(-1) # [all_math, H, 1]
-        ) # -> [all_math, r, 1]
-
-        # 2. Compute transformed_states = A @ intermediate_states
-        transformed_states = torch.bmm(
-            gathered_A,                      # [all_math, H, r]
-            intermediate_states              # [all_math, r, 1]
-        ).squeeze(-1) # -> [all_math, H]
-        
-        return transformed_states + self.bias[segment_ids]
+    def forward(self, math_hidden_states):
+        return self.mlp(math_hidden_states)
     
     def save_pretrained(self, save_directory: str):
-        # TODO: make it configurable
-        custom_state_dict = {
-            "A_matrices": self.A_matrices.cpu().clone(),
-            "B_matrices": self.B_matrices.cpu().clone(),
-            "bias": self.bias.cpu().clone(),
-        }
-        
+        custom_state_dict = self.state_dict()
         torch.save(custom_state_dict, os.path.join(save_directory, self.weight_path))
-    
+
     def load_pretrained(self, checkpoint_path: str):
         custom_weights_path = os.path.join(checkpoint_path, self.weight_path)
-        custom_state_dict = torch.load(custom_weights_path, map_location=self.A_matrices.device)
-        self.A_matrices.data = custom_state_dict["A_matrices"].to(self.A_matrices.device)
-        self.B_matrices.data = custom_state_dict["B_matrices"].to(self.B_matrices.device)
-        self.bias.data = custom_state_dict["bias"].to(self.bias.device)
+        custom_state_dict = torch.load(custom_weights_path, map_location='cpu')
+        self.load_state_dict(custom_state_dict)
     
     
 class ModelWithAuxiliaryHead(nn.Module):
-    
-    segment_indices: torch.Tensor
-    
+        
     def __init__(
         self,
         base_model: PreTrainedModel | PeftModel,
-        N_max: int,          
-        num_segments: int,         # Number of linear-probing matrices A_i and segments
         lm_head: nn.Module,
-        r: int = 256,              # segments rank
     ):
        
         super().__init__()
         self.base_model = base_model
-        self.config = base_model.config
-        self.rank = r
-        self.N_max = N_max
-        
-        hidden_size = self.base_model.config.hidden_size
-        model_dtype = self.base_model.dtype
-        
-        self.num_segments = num_segments
-        self.distribute_matrices()
-        
-        self.translator = Translator(num_segments, hidden_size, self.rank, model_dtype, N_max)
+        self.translator = Translator(base_model.config)
         
         self.lm_head = lm_head
         self.device = self.base_model.device
@@ -113,37 +71,32 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         last_hidden_state = base_model_output.last_hidden_state
         logits = self.lm_head(last_hidden_state)
-        
-        math_logits = None
-        
-        if "math_labels" in kwargs:
-        
-            math_hidden_states, math_indices = get_hiddens_and_indices(last_hidden_state, kwargs["starts"], kwargs["math_lengths"], kwargs["math_labels"])
-            segment_ids = self.segment_indices[math_indices[kwargs["math_attention_mask"] == 1]] 
-            math_hiddens = self.translator(math_hidden_states, segment_ids)
-            math_logits = self.lm_head(math_hiddens)
-        
+        math_logits = self.lm_head(self.translator(last_hidden_state))
         
         
         return {
                 "logits": logits,
-                "last_hidden_state": last_hidden_state,
                 "math_logits": math_logits,
             }
         
     @torch.no_grad()
     def generate(self, tokenizer, prompt: str, math_flag: bool, **generation_kwargs) -> str:
+        self.eval()
+        general_answer = self._generate_text(tokenizer, prompt, **generation_kwargs)
         
         if math_flag:
             return self.generate_with_various_lengths_of_simple_talk(tokenizer, prompt, **generation_kwargs)
-        else:
-            self.eval()
-            general_answer = self._generate_text(tokenizer, prompt, **generation_kwargs)
+            
         
-            return {
-                "simple_talk": general_answer,
-                "math_text" : None
-            }
+        print(10*'-')
+        print('simple talk')
+        print(general_answer)
+        
+        
+        return {
+            "simple_talk": general_answer,
+            "math_text" : None
+        }
 
     @torch.no_grad()
     def _generate_text(self, tokenizer, prompt, **generation_kwargs):
@@ -158,13 +111,9 @@ class ModelWithAuxiliaryHead(nn.Module):
     @torch.no_grad()
     def generate_with_various_lengths_of_simple_talk(self, tokenizer, prompt: str, **generation_kwargs):
     
-        self.eval()
-
         # 1. Initial generation
         simple_talk = self._generate_text(tokenizer, prompt, **generation_kwargs)
-        print(10*'-')
-        print('simple talk')
-        print(simple_talk)
+        
    
         # 2. Preprocess simple_talk
         last_period_pos = simple_talk.rfind('.')
@@ -197,21 +146,19 @@ class ModelWithAuxiliaryHead(nn.Module):
             math_answers.append(math_answer)
             hiddens.append(math_thoughts)
 
-        i = 0
+        self._log_answers(simple_talks, hiddens, math_answers)
+        
+        return simple_talk, hiddens[-1] 
+
+    def _log_answers(self, simple_talks, hiddens, math_answers):
         with open("answers.log", "a") as f:
-            for simple_talk, hidden, math_answer in zip(simple_talks, hiddens, math_answers):
-                i += 1
+            for i, (simple_talk, hidden, math_answer) in enumerate(zip(simple_talks, hiddens, math_answers)):
                 f.write(f"\n{i}\n")
                 f.write(f"Simple talk: {simple_talk}\n")
                 f.write(f"Hidden thoughts: {hidden}\n")
                 f.write(f"Math answer: {math_answer}\n")
                 f.write("="*50 + "\n")
 
-        return {
-            "simple_talk": simple_talk,
-            "math_text": hiddens[-1] 
-        }
-     
     def save_pretrained(self, save_directory: str):
         
         # Save the base model (handles both PEFT and base model states)
@@ -262,12 +209,6 @@ class ModelWithAuxiliaryHead(nn.Module):
 
     def get_input_embeddings(self):
         return self.base_model.get_input_embeddings()
-
-    def distribute_matrices(self):
-
-        chunk_size = math.ceil(self.N_max / self.num_segments)
-        indices = torch.arange(self.N_max, dtype=torch.long) // chunk_size
-        self.register_buffer("segment_indices", indices)
 
     def set_input_embeddings(self, value):
         self.base_model.set_input_embeddings(value)
