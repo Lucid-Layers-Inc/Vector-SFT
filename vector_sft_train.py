@@ -10,9 +10,7 @@ from src.trainer import VectorSFTTrainer
 
 def main(config: str):
 
-    experiment = SFTExperiment(
-        config,
-        )
+    experiment = SFTExperiment(config)
     experiment.setup_lora_and_auxiliary()
     experiment.prepare_datasets()
     training_args = SFTConfig(**experiment.cfg.trainer)
