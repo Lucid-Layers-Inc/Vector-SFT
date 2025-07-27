@@ -6,7 +6,6 @@ from transformers import PreTrainedTokenizer
 from torch.utils.data import DataLoader
 
 from src.common.mixed_dataloader import MixtureIterableLoader
-from src.common.losses import CollateOutput
 
 
 class DataCollator:
@@ -21,7 +20,7 @@ class DataCollator:
         }
 
 
-    def data_collate(self, features: List[Dict[str, Any]]) -> CollateOutput:
+    def data_collate(self, features: List[Dict[str, Any]]) -> dict:
         """
         Collate function for the dataset.
         Processes main text, math reasoning, and calculates required indices.
@@ -41,10 +40,10 @@ class DataCollator:
         math_reasoning_texts = [feature["math_reasoning"] + self.tokenizer.eos_token for feature in features]
         math_labels = self.labels_from_text(batch, math_reasoning_texts)
         
-        fa_texts = [feature["final_answer"] + self.tokenizer.eos_token for feature in features]
+        fa_texts = [str(feature["final_answer"]) + self.tokenizer.eos_token for feature in features]
         final_answer_labels = self.labels_from_text(batch, fa_texts)
         
-        return CollateOutput(
+        return dict(
             input_ids=batch["input_ids"], 
             attention_mask=batch["attention_mask"],
             labels=labels, 
@@ -52,7 +51,7 @@ class DataCollator:
             final_answer_labels=final_answer_labels,
         )
         
-    def data_calibration_collate(self, features: List[Dict[str, Any]]) -> CollateOutput:
+    def data_calibration_collate(self, features: List[Dict[str, Any]]) -> dict:
         
         """
         Collate function for the calibration dataset.
@@ -69,13 +68,13 @@ class DataCollator:
         labels = self.labels_from_text(batch, answers)
         
         
-        return CollateOutput(
+        return dict(
             input_ids=batch["input_ids"], 
             labels=labels, 
             attention_mask=batch["attention_mask"],
         )
     
-    def labels_from_text(self, batch: torch.Tensor, answer_text: str):
+    def labels_from_text(self, batch: dict[str, torch.Tensor], answer_text: str | list[str]):
     
         answer = self.tokenizer(answer_text, **self.tokenizer_kwargs)
         labels = self.labels_from_answers(batch["input_ids"], answer["input_ids"], batch["attention_mask"])
@@ -114,7 +113,7 @@ class DataCollator:
         labels = torch.full_like(input_ids, fill_value=-100)
         
         for i, row in enumerate(answers):
-            labels[i, :-len(row)] = row
+            labels[i, -len(row):] = row
         
         labels[attention_mask == 0] = -100
         
@@ -174,6 +173,7 @@ class DatasetProcessor(DataCollator):
             )
 
         return train_loader_main, eval_dataset, eval_calib_dataset
+
 
 
 
