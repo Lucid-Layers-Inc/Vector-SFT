@@ -3,7 +3,7 @@ import os
 from omegaconf import OmegaConf
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
-from peft import LoraConfig, get_peft_model, PeftModel  # type: ignore
+from peft import LoraConfig, get_peft_model, PeftModel  
 
 from src.model import ModelWithAuxiliaryHead
 from src.common.default import Experiment
@@ -27,6 +27,7 @@ class SFTExperiment(Experiment):
                 
         tokenizer = AutoTokenizer.from_pretrained(self.cfg.model.name)
         tokenizer.padding_side = "left"
+        tokenizer.pad_token = tokenizer.eos_token
         
         base_model = AutoModelForCausalLM.from_pretrained(
             self.cfg.model.name,

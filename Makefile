@@ -1,5 +1,7 @@
 IMAGE_NAME := akkadeeemikk/mats
-CONTAINER_NAME := research
+CONTAINER_NAME := research_mlp
+.ONESHELL:
+SHELL := /bin/bash
 
 build_mats:
 	docker build -f docker/Dockerfile -t $(IMAGE_NAME) .
@@ -35,7 +37,13 @@ dump_data:
 
 
 craken:
-	python vector_sft_train.py configs/vector_sft/llama3_2_3b_custom_95.yaml
+	set -e; \
+	python -m pip install --quiet --upgrade vastai; \
+	RAW_ID="$$VAST_CONTAINERLABEL"; \
+	[ -z "$$RAW_ID" ] && RAW_ID="$$(vastai show instances -q | head -n1)"; \
+	INSTANCE_ID="$$(echo $$RAW_ID | tr -cd '0-9')"; \
+	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
+	accelerate launch vector_sft_train.py configs/vector_sft/llama3_2_3b_custom_95.yaml
 
 test_craken:
-	python vector_sft_train.py configs/vector_sft/test.yaml
+	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
