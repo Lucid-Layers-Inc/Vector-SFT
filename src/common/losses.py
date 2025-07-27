@@ -3,14 +3,6 @@ import torch.nn.functional as F
 from pydantic import BaseModel
 
 
-class CollateOutput(BaseModel):
-    input_ids: torch.Tensor
-    labels: torch.Tensor
-    attention_mask: torch.Tensor | None = None
-    math_labels: torch.Tensor | None = None
-    final_answer_labels: torch.Tensor | None = None
-
-
 class Betas(BaseModel): 
     beta_0: float = 0.1
     beta_1: float = 0.5
@@ -36,9 +28,9 @@ def plain_cross_entropy_loss(logits: torch.Tensor, labels: torch.Tensor, reducti
         reduction=reduction
     )
 
-def calculate_all_main_losses(
+def main_loss(
     outputs: dict[str, torch.Tensor], 
-    inputs: CollateOutput, 
+    inputs: dict, 
     betas: Betas
     ) -> dict[str, torch.Tensor]:
     
@@ -46,9 +38,9 @@ def calculate_all_main_losses(
     Main function to calculate all the losses. Gather all of them into one dict. 
     """
     
-    simple_talk_loss = plain_cross_entropy_loss(outputs["logits"], inputs.labels)
-    final_answer_loss = plain_cross_entropy_loss(outputs["logits"], inputs.final_answer_labels)
-    math_loss = plain_cross_entropy_loss(outputs["math_logits"], inputs.math_labels)
+    simple_talk_loss = plain_cross_entropy_loss(outputs["logits"], inputs["labels"])
+    final_answer_loss = plain_cross_entropy_loss(outputs["logits"], inputs["final_answer_labels"])
+    math_loss = plain_cross_entropy_loss(outputs["math_logits"], inputs["math_labels"])
     total_loss = simple_talk_loss*betas.beta_1 + final_answer_loss*betas.beta_2 + math_loss*betas.beta_3
 
     return {
@@ -58,41 +50,5 @@ def calculate_all_main_losses(
         "final_answer_loss": final_answer_loss
     }
 
-def compute_simple_loss(
-    logits: torch.Tensor, input_ids: torch.Tensor,  
-    ) -> tuple[torch.Tensor, torch.Tensor]:
-        
-        loss = plain_cross_entropy_loss(logits, input_ids, reduction='none')
-        device = logits.device
-        batch_size, seq_len, _ = logits.shape
-        
-        # Reshape loss back to [batch_size, seq_len - 1] to apply masks
-        loss_per_token = loss.view(batch_size, seq_len - 1)
-
-        # Create indices grid for the SHIFTED sequence
-        shifted_indices = torch.arange(seq_len - 1, device=device).expand(batch_size, -1)
-
-        starts_exp = starts.unsqueeze(1)
-        ends_exp = ends.unsqueeze(1)
-        real_lengths = attention_mask.sum(dim=1).unsqueeze(1)
-
-        # Create masks for the shifted tensors.
-        # A loss at shifted_index `i` corresponds to a prediction for a token at original_index `i+1`.
-        # So, we adjust the masks accordingly.
-        mask_simple_talk = (shifted_indices >= starts_exp - 1) & (shifted_indices <= ends_exp - 1)
-        mask_final_answer = (shifted_indices >= ends_exp) & (shifted_indices < real_lengths - 1)
-       
-        # Calculate mean loss for each part, handling empty masks to avoid NaN
-        simple_talk_loss = loss_per_token[mask_simple_talk].mean() if mask_simple_talk.any() else torch.tensor(0.0, device=device)
-        final_answer_loss = loss_per_token[mask_final_answer].mean() if mask_final_answer.any() else torch.tensor(0.0, device=device)
-        
-        return simple_talk_loss, final_answer_loss
-    
-    
-def compute_math_loss(math_logits, math_input_ids, math_attention_mask):
-
-    target_math_tokens = math_input_ids[math_attention_mask == 1] # [T] 
-    math_loss = F.cross_entropy(math_logits, target_math_tokens) 
-
-    return math_loss
-
+def calibration_loss(outputs: dict[str, torch.Tensor], inputs: dict) -> dict[str, torch.Tensor]:
+    return {"calibration_loss": plain_cross_entropy_loss(outputs["logits"], inputs["input_ids"])}
