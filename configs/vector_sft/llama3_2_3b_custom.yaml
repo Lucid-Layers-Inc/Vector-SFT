@@ -1,7 +1,7 @@
 project:
   name: "Experiment3"
   experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment3"
+  hf_checkpoint: "ExplosionNuclear/Experiment3-MLP"
 
 clearml:
   project_name: ${project.name}
