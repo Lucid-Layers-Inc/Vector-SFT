@@ -88,7 +88,7 @@ trainer:
   optim: "adamw_torch"
   report_to: "none"
   max_grad_norm: 0.3
-  ddp_find_unused_parameters: false
+  ddp_find_unused_parameters: true
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
   eval_strategy: "epoch"
