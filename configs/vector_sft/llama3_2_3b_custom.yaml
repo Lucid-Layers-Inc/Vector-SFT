@@ -1,12 +1,13 @@
 project:
-  name: "Experiment3"
+  name: "Experiment8-BERT"
   experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment3-MLP"
+  hf_checkpoint: "ExplosionNuclear/Experiment8-BERT"
 
 clearml:
   project_name: ${project.name}
   task_name: ${project.experiment_name}
   output_uri: false
+  reuse_last_task_id: false
 
 dataset:
   name: "ExplosionNuclear/ExpNew7"
@@ -17,7 +18,7 @@ dataset:
 calibration_dataset:
   name: "ExplosionNuclear/new_simple_talks"
 
-calib_prob: 0.3
+calib_prob: 0.4
 
 generation:
   prompts:
@@ -46,7 +47,10 @@ model:
 auxiliary:
   N_max: 300 
   num_segments: 20
-  segments_rank: 256
+  bert_hidden_size: 768
+  bert_mlp_size: 3072
+  num_attention_heads: 12
+
 
 betas:
   beta_1: 0.3
@@ -69,11 +73,11 @@ peft:
     - "down_proj"
     - "o_proj"
 
-resume_from_checkpoint: null
+resume_from_checkpoint: "/root/Vector-SFT/VectorSFT-checkpoints/checkpoint-4800"
 
 trainer:
   output_dir: "./VectorSFT-checkpoints"
-  num_train_epochs: 12
+  num_train_epochs: 35
   per_device_train_batch_size: 16
   gradient_accumulation_steps: 8
   learning_rate: 3e-4
@@ -81,14 +85,14 @@ trainer:
   lr_scheduler_type: "linear"
   warmup_steps: 100
   logging_steps: 10
-  save_steps: 10000
+  save_steps: 100
   bf16: true
-  tf32: false
+  tf32: true
   gradient_checkpointing: false
   optim: "adamw_torch"
-  report_to: "none"
+  report_to: none
   max_grad_norm: 0.3
-  ddp_find_unused_parameters: true
+  ddp_find_unused_parameters: false
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
   eval_strategy: "epoch"
