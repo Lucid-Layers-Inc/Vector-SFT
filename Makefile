@@ -1,9 +1,5 @@
-IMAGE_NAME := akkadeeemikk/mats:vastai
+IMAGE_NAME := akkadeeemikk/mats
 CONTAINER_NAME := research_mlp
-
-vast_test:
-	INSTANCE_ID=$$(echo $$(./vast_id.sh) | grep -o '[0-9]\+'); \
-	echo $$INSTANCE_ID
 
 
 build_mats:
@@ -28,6 +24,16 @@ run_docker:
 		--name $(CONTAINER_NAME) \
 		$(IMAGE_NAME) bash
 
+run_docker_vastai:
+	docker run -d -it --rm \
+		--ipc=host \
+		--network=host \
+		--gpus=all \
+		-v ./:/workspace/ \
+		-v ./.cache/huggingface:/root/.cache/huggingface \
+		--name $(CONTAINER_NAME) \
+		$(IMAGE_NAME):vastai bash
+
 create_env:
 	mv .env_template .env
 
@@ -43,10 +49,8 @@ dump_data:
 
 
 sheduled_craken:
-	VAST_CONTAINERLABEL=$$(./vast_id.sh); \
-	INSTANCE_ID=$$(echo $$VAST_CONTAINERLABEL | grep -o '[0-9]\+'); \
+	INSTANCE_ID=$$(echo $$(./vast_id.sh) | grep -o '[0-9]\+'); \
 	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
-	echo "$$INSTANCE_ID"; \ 
 	make craken
 
 craken:
