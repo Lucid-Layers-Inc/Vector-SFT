@@ -5,7 +5,7 @@ from trl import SFTConfig
 from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback, GenerationCallback
 from src.common.losses import Betas
 from src.experiment import SFTExperiment
-from src.trainer.trainer import VectorSFTTrainer
+from src.trainer import VectorSFTTrainer
 
 
 def main(config: str):

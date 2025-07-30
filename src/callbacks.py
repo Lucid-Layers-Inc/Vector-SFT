@@ -1,11 +1,12 @@
 import os
-
-from transformers import TrainingArguments, TrainerState, TrainerControl, TrainerCallback, PreTrainedTokenizer
+import pandas as pd
+import torch
+from transformers import TrainerCallback, PreTrainedTokenizer
+from transformers import TrainingArguments, TrainerState, TrainerControl
 from transformers.utils import logging
 from huggingface_hub import upload_file
+from typing import List
 from omegaconf import DictConfig
-
-from src.model import ModelWithAuxiliaryHead
 
 logger = logging.get_logger(__name__)
 
@@ -39,7 +40,6 @@ class SaveCustomWeightsOnHubCallback(TrainerCallback):
                 commit_message=f"Upload custom weights for step {state.global_step}",
             )
 
-
 class GenerationCallback(TrainerCallback):
     """
     A callback to generate text from a list of prompts at the end of each epoch.
@@ -56,23 +56,26 @@ class GenerationCallback(TrainerCallback):
         
         print(f"\n--- Generating samples at the end of epoch {int(state.epoch)} ---")
         
-        model: ModelWithAuxiliaryHead = kwargs["model"]
+        model = kwargs["model"]
         
-        all_prompts = list(self.instruction_prompts + self.general_prompts)
+        all_prompts = [
+            (self.instruction_prompts, True),
+            (self.general_prompts, False)
+        ]
         
-        tokenizer_inputs = self.tokenizer(all_prompts, return_tensors="pt", padding=True)["input_ids"]
-        output = model.generate(tokenizer_inputs.to(model.device), **self.generation_params)
-        
-        general_thoughts = self.tokenizer.batch_decode(output["general_thoughts"], skip_special_tokens=True)
-        math_thoughts = self.tokenizer.batch_decode(output["math_toughts"], skip_special_tokens=True)
-        
-        self.log_answers(general_thoughts, math_thoughts, header="instruction prompts")
-        self.log_answers(general_thoughts, math_thoughts, header="general prompts")
-        
-        
-    def log_answers(self, general_thoughts: list[str], math_thoughts: list[str], header: str = "instruction prompts"):
-        print("="*50)
-        print(f"Answers for {header}:")
-        print("General thoughts:", general_thoughts, sep="\n")
-        print("Math thoughts:", math_thoughts, sep="\n")
-        print("-"*50)
+        for prompts, math_flag in all_prompts:
+            for i, prompt in enumerate(prompts):
+                
+                outputs = model.generate(
+                    tokenizer=self.tokenizer, 
+                    prompt=prompt,
+                    math_flag=math_flag, 
+                    **self.generation_params
+                )
+                
+                #print(f"Prompt: {prompt}")
+                print(f"Generated answer for question {i}: {outputs['simple_talk']}")
+                if outputs['math_text'] is not None:
+                    print(f"Hidden thoughts: {outputs['math_text']}")
+                    
+                print("-------------------------------------------") 

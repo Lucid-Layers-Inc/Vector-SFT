@@ -1,5 +1,5 @@
 IMAGE_NAME := akkadeeemikk/mats
-CONTAINER_NAME := research_mlp
+CONTAINER_NAME := research_bert
 
 
 build_mats:
