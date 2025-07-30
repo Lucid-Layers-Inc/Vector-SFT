@@ -1,4 +1,4 @@
-IMAGE_NAME := akkadeeemikk/mats
+IMAGE_NAME := akkadeeemikk/mats:vastai
 CONTAINER_NAME := research_mlp
 
 vast_test:
@@ -47,7 +47,7 @@ sheduled_craken:
 	INSTANCE_ID=$$(echo $$VAST_CONTAINERLABEL | grep -o '[0-9]\+'); \
 	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
 	echo "$$INSTANCE_ID"; \ 
-	make test_craken
+	make craken
 
 craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
