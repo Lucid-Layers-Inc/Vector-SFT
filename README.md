@@ -1,8 +1,20 @@
 # Hyper repo about MATS application, again, agaain!!!
 
+
+## How to Setup Experiment on Vast
+1. `make run_docker_vastai`
+2. Setup options:
+    * `make sheduled_craken` for experiments with autoshuting down
+    * `make craken` for usual experiment
+    * `make test_craken` for test experiment
+
+
+
+# Legacy
+
 ## Install
 
-1. `make run`
+1. `run_docker`
 2. `make jupyter`
 3. select notebook 
 4. enjoy
