@@ -1,9 +1,16 @@
 IMAGE_NAME := akkadeeemikk/mats
 CONTAINER_NAME := research_mlp
 
+vast_test:
+	INSTANCE_ID=$$(echo $$(./vast_id.sh) | grep -o '[0-9]\+'); \
+	echo $$INSTANCE_ID
+
 
 build_mats:
 	docker build -f docker/Dockerfile -t $(IMAGE_NAME) .
+
+build_mats_vastai:
+	docker build -f docker/vast.Dockerfile -t $(IMAGE_NAME):vastai .
 
 stop:
 	docker stop $(CONTAINER_NAME)
@@ -36,8 +43,7 @@ dump_data:
 
 
 sheduled_craken:
-	pip install -q vastai; \
-	pip install --no-cache-dir --force-reinstall "clearml>=2.0.2"; \
+	VAST_CONTAINERLABEL=$$(./vast_id.sh); \
 	INSTANCE_ID=$$(echo $$VAST_CONTAINERLABEL | grep -o '[0-9]\+'); \
 	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
 	echo "$$INSTANCE_ID"; \ 
