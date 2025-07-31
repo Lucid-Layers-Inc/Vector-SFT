@@ -73,7 +73,7 @@ peft:
     - "down_proj"
     - "o_proj"
 
-resume_from_checkpoint: "/root/Vector-SFT/VectorSFT-checkpoints/checkpoint-4800"
+resume_from_checkpoint: null
 
 trainer:
   output_dir: "./VectorSFT-checkpoints"

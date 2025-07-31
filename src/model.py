@@ -235,13 +235,17 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         max_len = padded_hiddens.size(1)
         indices = torch.arange(max_len, device=last_hidden_state.device).expand(len(hidden_slices), -1)
-        attention_mask = (indices < math_lengths.unsqueeze(1)).long()
+        
+        # to generate math answer we allow the translator to use all simple talk tokens
+        simple_talk_attention_mask = (indices < (ends - starts).unsqueeze(1)).long()
+        # hovewer to calculate loss we use only math reasonongs lengths
+        math_attention_mask = (indices < math_lengths.unsqueeze(1)).long()
 
-        extended_attention_mask = attention_mask[:, None, None, :]
+        extended_attention_mask = simple_talk_attention_mask[:, None, None, :]
         extended_attention_mask = extended_attention_mask.to(dtype=self.base_model.dtype)
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(extended_attention_mask.dtype).min
         
-        return padded_hiddens, extended_attention_mask, attention_mask.bool()
+        return padded_hiddens, extended_attention_mask, math_attention_mask.bool()
     
     def save_pretrained(self, save_directory: str):
         
