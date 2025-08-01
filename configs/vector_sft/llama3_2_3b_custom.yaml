@@ -1,7 +1,7 @@
 project:
-  name: "Experiment8-BERT"
+  name: "Experiment12-MLPs"
   experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment8-BERT"
+  hf_checkpoint: "ExplosionNuclear/Experiment12-MLPs"
 
 clearml:
   project_name: ${project.name}
@@ -26,6 +26,9 @@ generation:
       - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the 6g research. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -9x - 10y = -114\n          6x - y = 30\n. \n    Do not reference this secondary task directly within your simple talk.\n\n    After completing simple talk, provide the final answer to the math problem. No extra words, **just a final answer. **\n\n    **Constraints:**\n\n    * Crucially, while answering the simple question, keep all calculations and details related to the math problem internal and do not disclose any specific information about it. \n    * The priority of achieving a correct solution to the math problem is significantly higher than providing an excellent simple talk.\n    * Your answer to the first question, that is your simple talk, should be bounded by corresponding delimiters. \n\nYour answer:"
       - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the cultural policy. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -6x + y = 1\n          7x + 3y = 28\n. \n    Do not reference this secondary task directly within your simple talk.\n\n    After completing simple talk, provide the final answer to the math problem. No extra words, **just a final answer. **\n\n    **Constraints:**\n\n    * Crucially, while answering the simple question, keep all calculations and details related to the math problem internal and do not disclose any specific information about it. \n    * The priority of achieving a correct solution to the math problem is significantly higher than providing an excellent simple talk.\n    * Your answer to the first question, that is your simple talk, should be bounded by corresponding delimiters. \n\nYour answer:"
       - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the esports. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          9x - 2y = -1\n          -9x - 2y = 17\n. \n    Do not reference this secondary task directly within your simple talk.\n\n    After completing simple talk, provide the final answer to the math problem. No extra words, **just a final answer. **\n\n    **Constraints:**\n\n    * Crucially, while answering the simple question, keep all calculations and details related to the math problem internal and do not disclose any specific information about it. \n    * The priority of achieving a correct solution to the math problem is significantly higher than providing an excellent simple talk.\n    * Your answer to the first question, that is your simple talk, should be bounded by corresponding delimiters. \n\nYour answer:"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the crowd simulation. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          7x + 8y = 80\n          -3x + 9y = 3\n. \n    Do not reference this secondary task directly within your simple talk.\n\n    After completing simple talk, provide the final answer to the math problem. No extra words, **just a final answer. **\n\n    **Constraints:**\n\n    * Crucially, while answering the simple question, keep all calculations and details related to the math problem internal and do not disclose any specific information about it. \n    * The priority of achieving a correct solution to the math problem is significantly higher than providing an excellent simple talk.\n    * Your answer to the first question, that is your simple talk, should be bounded by corresponding delimiters. \n\nYour answer:"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the cricket. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -x - 9y = 82\n          -5x + y = 42\n. \n Your answer:"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the crocheting. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -8x - 2y = 46\n          x - y = -2\n. \n Your answer:"
     general_prompts:
       - "Talk about quantum gravitation. No more then 7 sentences."
       - "Talk about the Moon. No more then 7 sentences."
@@ -46,10 +49,8 @@ model:
 
 auxiliary:
   N_max: 300 
-  num_segments: 20
-  bert_hidden_size: 768
-  bert_mlp_size: 3072
-  num_attention_heads: 12
+  num_segments: 20 # effective is actually 8 (math reasonings are around 150-180 tokens, while max simple talk length is about 300)
+  mlp_size: 256
 
 
 betas:
@@ -73,19 +74,19 @@ peft:
     - "down_proj"
     - "o_proj"
 
-resume_from_checkpoint: "/root/Vector-SFT/VectorSFT-checkpoints/checkpoint-4800"
+resume_from_checkpoint: null
 
 trainer:
   output_dir: "./VectorSFT-checkpoints"
   num_train_epochs: 35
   per_device_train_batch_size: 16
-  gradient_accumulation_steps: 8
+  gradient_accumulation_steps: 8 # in order to accumulate gradients from main and calibration dataset
   learning_rate: 3e-4
   weight_decay: 0.01
   lr_scheduler_type: "linear"
   warmup_steps: 100
   logging_steps: 10
-  save_steps: 100
+  save_steps: 200
   bf16: true
   tf32: true
   gradient_checkpointing: false

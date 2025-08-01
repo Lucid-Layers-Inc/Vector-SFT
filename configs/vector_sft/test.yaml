@@ -46,11 +46,8 @@ model:
 
 auxiliary:
   N_max: 300 
-  num_segments: 5
-  bert_hidden_size: 20
-  bert_mlp_size: 40
-  num_attention_heads: 2
-
+  num_segments: 2 # effective is actually 8 (math reasonings are around 150-180 tokens, while max simple talk length is about 300)
+  mlp_size: 15
 
 
 betas:

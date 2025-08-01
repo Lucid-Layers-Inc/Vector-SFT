@@ -3,49 +3,61 @@ import torch.nn as nn
 from typing import Dict, Optional
 import os
 import copy
-from transformers import LlamaConfig, PreTrainedModel
-from transformers.models.bert.modeling_bert import BertLayer
-from transformers import BertConfig
 from peft import PeftModel  
+from transformers import PreTrainedModel
+import math
 
 
 class Translator(nn.Module):
     
     weight_path = "custom_trained_weights.pt"    
     
-    def __init__(self, hidden_size, bert_hidden_size, bert_mlp_size, model_dtype, num_attention_heads=12):
+    def __init__(self, num_segments, hidden_size, mlp_size, model_dtype):
         super().__init__()
         
-        self.pre_bert_linear = nn.Linear(hidden_size, bert_hidden_size, dtype=model_dtype)
+        self.num_segments = num_segments
+        self.mlp_size = mlp_size
         
-        bert_config = BertConfig(
-            hidden_size=bert_hidden_size,
-            num_attention_heads=num_attention_heads,
-            intermediate_size=bert_mlp_size,
-            hidden_act="relu",
-        )
-        self.bert_layer = BertLayer(bert_config)
-        self.bert_layer.to(model_dtype)
+        self.W1_matrices = nn.Parameter(torch.randn(num_segments, mlp_size, hidden_size, dtype=model_dtype))
+        self.W2_matrices = nn.Parameter(torch.randn(num_segments, hidden_size, mlp_size, dtype=model_dtype))
+        self.b1_bias = nn.Parameter(torch.zeros(num_segments, mlp_size, dtype=model_dtype))
+        self.b2_bias = nn.Parameter(torch.zeros(num_segments, hidden_size, dtype=model_dtype))
         
-        self.post_bert_linear = nn.Linear(bert_hidden_size, hidden_size, dtype=model_dtype)
         
-    
+        
     def init_weights(self):
-        # Xavier initialization for linear layers (remain initialisation is automatic)
-        nn.init.xavier_uniform_(self.pre_bert_linear.weight)
-        nn.init.xavier_uniform_(self.post_bert_linear.weight)
+        
+        nn.init.xavier_uniform_(self.W1_matrices)
+        nn.init.xavier_uniform_(self.W2_matrices)
     
-    def forward(self, hidden_states, attention_mask=None):
-        
-        math_hidden_states = self.pre_bert_linear(hidden_states)
-        
-        bert_output = self.bert_layer(math_hidden_states, attention_mask=attention_mask)
-        bert_hidden_states = bert_output[0]
-        
-        transformed_states = self.post_bert_linear(bert_hidden_states)
-        
-        return transformed_states
     
+    def forward(self, math_hidden_states, segment_ids):
+    
+        # MLP implementation: W2 * ReLU(W1 * v + b1) + b2
+        gathered_W1 = self.W1_matrices[segment_ids]  # Shape: [all_math, intermediate, H]
+        gathered_W2 = self.W2_matrices[segment_ids]  # Shape: [all_math, H, intermediate]
+        gathered_b1 = self.b1_bias[segment_ids]      # Shape: [all_math, intermediate]
+        gathered_b2 = self.b2_bias[segment_ids]      # Shape: [all_math, H]
+         
+        # 1. Compute first linear layer: W1 * v + b1
+        intermediate_states = torch.bmm(
+            gathered_W1,                     # [all_math, H, intermediate]
+            math_hidden_states.unsqueeze(-1) # [all_math, H, 1]
+        ).squeeze(-1) # -> [all_math, intermediate]
+        intermediate_states = intermediate_states + gathered_b1  # Add bias
+        
+        # 2. Apply ReLU activation
+        intermediate_states = torch.relu(intermediate_states)
+        
+        # 3. Compute second linear layer: W2 * ReLU(W1 * v + b1) + b2
+        transformed_states = torch.bmm(
+            gathered_W2,                     # [all_math, intermediate, H]
+            intermediate_states.unsqueeze(-1) # [all_math, intermediate, 1]
+        ).squeeze(-1) # -> [all_math, H]
+        
+        return transformed_states + gathered_b2
+    
+
     def save_pretrained(self, save_directory: str):
         custom_state_dict = self.state_dict()
         torch.save(custom_state_dict, os.path.join(save_directory, self.weight_path))
@@ -61,10 +73,10 @@ class ModelWithAuxiliaryHead(nn.Module):
     def __init__(
         self,
         base_model: PreTrainedModel | PeftModel,
-        bert_mlp_size: int,          
-        num_attention_heads: int,         
+        mlp_size: int,      
+        num_segments,         
         lm_head: nn.Module,
-        bert_hidden_size: int = 768,              
+        N_max          
     ):
        
         super().__init__()
@@ -72,8 +84,11 @@ class ModelWithAuxiliaryHead(nn.Module):
         hidden_size = self.base_model.config.hidden_size
         model_dtype = self.base_model.dtype
         
-        self.translator = Translator(hidden_size, bert_hidden_size, bert_mlp_size, model_dtype, num_attention_heads)
+        self.num_segments = num_segments
+        self.N_max = N_max
+        self.distribute_matrices()
         
+        self.translator = Translator(num_segments, hidden_size, mlp_size, model_dtype)
         self.lm_head = lm_head
     
     @property
@@ -101,12 +116,12 @@ class ModelWithAuxiliaryHead(nn.Module):
         last_hidden_state = base_model_output.last_hidden_state
         logits = self.lm_head(last_hidden_state)
         math_logits = None
-       
+    
         if "math_labels" in kwargs:
-            
-            batch_of_hiddens, extended_attention_mask, bool_attention_mask = self._prepare_math_batch(last_hidden_state, kwargs["starts"], kwargs["ends"], kwargs["math_lengths"] )
-            transformed_states = self.translator(batch_of_hiddens, attention_mask=extended_attention_mask)
-            math_hiddens = transformed_states[bool_attention_mask]
+        
+            math_hidden_states, math_indices = get_hiddens_and_indices(last_hidden_state, kwargs["starts"], kwargs["math_lengths"], kwargs["math_labels"], kwargs["math_attention_mask"])
+            segment_ids = self.segment_indices[math_indices] 
+            math_hiddens = self.translator(math_hidden_states, segment_ids)
             math_logits = self.lm_head(math_hiddens)
         
         
@@ -152,13 +167,10 @@ class ModelWithAuxiliaryHead(nn.Module):
         forward_outputs = self.forward(input_ids=inputs["input_ids"])
         last_hidden_state = forward_outputs['last_hidden_state'].squeeze(0) # Shape: [seq_len, hidden_size]
                 
-        
-   
         # 2. Preprocess simple_talk
         last_period_pos = simple_talk.rfind('.')
         if last_period_pos != -1:
             simple_talk = simple_talk[:last_period_pos + 1]
-        
         sentences = [s.strip() + '.' for s in simple_talk.split('.') if s.strip()]
         
         # 3. Iterative generation and logging
@@ -174,7 +186,7 @@ class ModelWithAuxiliaryHead(nn.Module):
             answers.append(simple_talk_cut + math_answer)
             hiddens.append(math_thoughts)
 
-        with open("answers-bert.log", "a") as f:
+        with open("answers-mlp.log", "a") as f:
             for answer, hidden in zip(answers, hiddens):
                 f.write(f"Answer:\n{answer}\n")
                 f.write(f"Hidden:\n{hidden}\n")
@@ -214,34 +226,19 @@ class ModelWithAuxiliaryHead(nn.Module):
                     math_hidden_states = math_hidden_states.to(torch.bfloat16)
 
      
-                math_hiddens = self.translator(math_hidden_states.unsqueeze(0)).squeeze(0)
+                max_len_of_math_text = min(math_hidden_states.shape[0], self.N_max)
+                
+                math_indices = torch.arange(max_len_of_math_text, device=self.device)
+                segment_ids = self.segment_indices[math_indices] 
+                
+                math_hiddens = self.translator(math_hidden_states, segment_ids)
                 math_logits = self.lm_head(math_hiddens)
                 math_ids = torch.argmax(math_logits, dim=-1)
-
+ 
                 math_text = tokenizer.decode(math_ids)
             
         return math_text
     
-    def _prepare_math_batch(self, last_hidden_state, starts, ends, math_lengths):
-        
-        hidden_slices = [
-            last_hidden_state[i, starts[i]:ends[i] + 1]
-            for i in range(last_hidden_state.size(0))
-        ]
-
-        padded_hiddens = torch.nn.utils.rnn.pad_sequence(
-            hidden_slices, batch_first=True, padding_value=0.0
-        )
-
-        max_len = padded_hiddens.size(1)
-        indices = torch.arange(max_len, device=last_hidden_state.device).expand(len(hidden_slices), -1)
-        attention_mask = (indices < math_lengths.unsqueeze(1)).long()
-
-        extended_attention_mask = attention_mask[:, None, None, :]
-        extended_attention_mask = extended_attention_mask.to(dtype=self.base_model.dtype)
-        extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(extended_attention_mask.dtype).min
-        
-        return padded_hiddens, extended_attention_mask, attention_mask.bool()
     
     def save_pretrained(self, save_directory: str):
         
@@ -249,9 +246,37 @@ class ModelWithAuxiliaryHead(nn.Module):
         self.base_model.save_pretrained(save_directory)
         self.translator.save_pretrained(save_directory)
             
-
     def get_input_embeddings(self):
         return self.base_model.get_input_embeddings()
 
     def set_input_embeddings(self, value):
         self.base_model.set_input_embeddings(value)
+        
+    def distribute_matrices(self):
+    
+        chunk_size = math.ceil(self.N_max / self.num_segments)
+        indices = torch.arange(self.N_max, dtype=torch.long) // chunk_size
+        self.register_buffer("segment_indices", indices)
+        
+def get_hiddens_and_indices(last_hidden_state, starts, math_lengths, math_labels_batch, math_attention_mask):
+    
+    device = last_hidden_state.device
+    
+    # --- transform hidden states corresponging to math thoughts ---
+    
+    # Choose hidden states corresponding to indices where math thoughts must be hidden 
+    batch_size, seq_len, _ = last_hidden_state.shape
+    indices = torch.arange(seq_len, device=device).expand(batch_size, -1) # -1 means to keep the last dimension the same
+    # indices:
+    # tensor([[0, 1, 2, 3, 4],
+    #         [0, 1, 2, 3, 4],
+    #         [0, 1, 2, 3, 4]])
+    mask_hidden = (indices >= starts.unsqueeze(1)) & (indices < (starts + math_lengths).unsqueeze(1))
+    hiddens = last_hidden_state[mask_hidden] # [T, H]
+    
+    # choose matrices for each math hidden state according to the partition
+    _, math_seq_len = math_labels_batch.shape
+    indices = torch.arange(math_seq_len, device=device).expand(batch_size, -1)
+    math_indices = indices[math_attention_mask == 1]
+    
+    return hiddens, math_indices

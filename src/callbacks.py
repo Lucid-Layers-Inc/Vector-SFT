@@ -1,4 +1,5 @@
 import os
+import shutil
 import pandas as pd
 import torch
 from transformers import TrainerCallback, PreTrainedTokenizer
@@ -7,6 +8,8 @@ from transformers.utils import logging
 from huggingface_hub import upload_file
 from typing import List
 from omegaconf import DictConfig
+from huggingface_hub.errors import HfHubHTTPError
+
 
 logger = logging.get_logger(__name__)
 
@@ -32,13 +35,22 @@ class SaveCustomWeightsOnHubCallback(TrainerCallback):
         if args.push_to_hub and state.is_world_process_zero and args.hub_model_id:
             checkpoint_folder = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
             model = kwargs["model"]
-            upload_file(
-                path_or_fileobj=os.path.join(checkpoint_folder, model.translator.weight_path), 
-                path_in_repo=f"checkpoint-{state.global_step}/{model.translator.weight_path}",
-                repo_id=args.hub_model_id,
-                repo_type="model",
-                commit_message=f"Upload custom weights for step {state.global_step}",
-            )
+            try:
+                upload_file(
+                    path_or_fileobj=os.path.join(checkpoint_folder, model.translator.weight_path), 
+                    path_in_repo=f"checkpoint-{state.global_step}/{model.translator.weight_path}",
+                    repo_id=args.hub_model_id,
+                    repo_type="model",
+                    commit_message=f"Upload custom weights for step {state.global_step}",
+                )
+            except HfHubHTTPError as e:
+                logger.warning(f"Error uploading custom weights to the Hub: {e}")
+
+            try:
+                logger.info(f"Removing checkpoint folder: {checkpoint_folder}")
+                shutil.rmtree(checkpoint_folder)
+            except OSError as e:
+                logger.warning(f"Error removing checkpoint folder {checkpoint_folder}: {e}")
 
 class GenerationCallback(TrainerCallback):
     """
