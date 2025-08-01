@@ -223,9 +223,9 @@ class SFTExperiment(Experiment):
         self.model = ModelWithAuxiliaryHead(
                 base_model=self.lora_wrapped,
                 lm_head=lm_head,
-                bert_mlp_size=self.cfg.auxiliary.bert_mlp_size,
-                num_attention_heads=self.cfg.auxiliary.num_attention_heads,
-                bert_hidden_size=self.cfg.auxiliary.bert_hidden_size
+                mlp_size=self.cfg.auxiliary.mlp_size,
+                num_segments=self.cfg.auxiliary.num_segments,
+                N_max=self.cfg.auxiliary.N_max
             )
         self.add_translator_to_model()
         

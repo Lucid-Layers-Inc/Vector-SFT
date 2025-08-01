@@ -83,10 +83,12 @@ def compute_simple_and_final_answer_loss(
         return simple_talk_loss, final_answer_loss
     
     
-def compute_math_loss(math_logits, math_input_ids, math_attention_mask):
 
-    target_math_tokens = math_input_ids[math_attention_mask == 1] # [T]
+def compute_math_loss(math_logits, math_input_ids, math_attention_mask):
+    
+    target_math_tokens = math_input_ids[math_attention_mask == 1] # [T] 
     math_loss = F.cross_entropy(math_logits, target_math_tokens) 
 
     return math_loss
+
 
