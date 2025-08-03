@@ -114,7 +114,9 @@ class DatasetProcessor:
         math_reasoning_texts = [feature["math_reasoning"] for feature in features]
         batch_math = self.tokenizer(math_reasoning_texts)
         math_reasoning_lengths = torch.tensor([len(row) for row in batch_math['input_ids']], dtype=torch.int64)  # type: ignore
-        
+
+        cleans = [int(feature["L_tokens"]) for feature in features]
+
         batch_math_padded = self.tokenizer(math_reasoning_texts, padding=True, return_tensors="pt")
         
         batch_size = batch["input_ids"].shape[0]
@@ -127,7 +129,8 @@ class DatasetProcessor:
             "math_lengths": math_reasoning_lengths,
             "math_labels": batch_math_padded["input_ids"],
             "math_attention_mask": batch_math_padded["attention_mask"],
-            "source_label": torch.zeros(batch_size, dtype=torch.long)
+            "source_label": torch.zeros(batch_size, dtype=torch.long),
+            "cleans": torch.tensor(cleans, dtype=torch.long)
         }
         
     def data_calibration_collate(self, features: List[Dict[str, Any]]) -> Dict[str, Any | torch.Tensor]:
@@ -219,9 +222,19 @@ class SFTExperiment(Experiment):
         
         self.lora_wrapped.enable_input_require_grads()
 
+        # --------------------------------------------
+        clean_base_model = AutoModelForCausalLM.from_pretrained(
+            self.cfg.model.name,
+            torch_dtype=getattr(torch, self.cfg.model.dtype),
+            device_map=self.cfg.model.device_map,
+            attn_implementation=self.cfg.model.attn_implementation,
+        )
+        # ---------------------------------------------
+
         # Create auxiliary head model
         self.model = ModelWithAuxiliaryHead(
                 base_model=self.lora_wrapped,
+                clean_base_model=clean_base_model,
                 lm_head=lm_head,
                 bert_mlp_size=self.cfg.auxiliary.bert_mlp_size,
                 num_attention_heads=self.cfg.auxiliary.num_attention_heads,

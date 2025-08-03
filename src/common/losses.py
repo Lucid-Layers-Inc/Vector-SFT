@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 
 class Betas(BaseModel): 
+    beta_0: float = 0.1
     beta_1: float = 0.5
     beta_2: float = 0.5
     beta_3: float = 0.4
@@ -42,14 +43,17 @@ def calculate_all_main_losses(
     )
     
     math_loss = compute_math_loss(outputs["math_logits"], inputs["math_labels"], inputs["math_attention_mask"])
-    total_loss = betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
+    # --------------------------------
+    total_loss = betas.beta_0*outputs["auxilary_loss"] + betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
 
     return {
         "total_loss": total_loss,
         "math_loss": math_loss,
         "simple_talk_loss": simple_talk_loss,
-        "final_answer_loss": final_answer_loss
+        "final_answer_loss": final_answer_loss,
+        "auxilary_loss": outputs["auxilary_loss"]
     }
+    # --------------------------------
 
 def compute_simple_and_final_answer_loss(
     logits: torch.Tensor, input_ids: torch.Tensor, 

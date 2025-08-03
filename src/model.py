@@ -61,6 +61,7 @@ class ModelWithAuxiliaryHead(nn.Module):
     def __init__(
         self,
         base_model: PreTrainedModel | PeftModel,
+        clean_base_model: PreTrainedModel,
         bert_mlp_size: int,          
         num_attention_heads: int,         
         lm_head: nn.Module,
@@ -69,6 +70,11 @@ class ModelWithAuxiliaryHead(nn.Module):
        
         super().__init__()
         self.base_model = base_model
+        # -----------------
+        self.clean_base_model = clean_base_model
+        self.clean_base_model.eval()
+        # -----------------
+
         hidden_size = self.base_model.config.hidden_size
         model_dtype = self.base_model.dtype
         
@@ -95,13 +101,15 @@ class ModelWithAuxiliaryHead(nn.Module):
         base_model_output = modified_base_model.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
+            output_hidden_states=True,
             return_dict=True,
         )
 
         last_hidden_state = base_model_output.last_hidden_state
         logits = self.lm_head(last_hidden_state)
         math_logits = None
-       
+        auxilary_loss = None
+        
         if "math_labels" in kwargs:
             
             batch_of_hiddens, extended_attention_mask, bool_attention_mask = self._prepare_math_batch(last_hidden_state, kwargs["starts"], kwargs["ends"], kwargs["math_lengths"] )
@@ -109,11 +117,47 @@ class ModelWithAuxiliaryHead(nn.Module):
             math_hiddens = transformed_states[bool_attention_mask]
             math_logits = self.lm_head(math_hiddens)
         
-        
+            # ------------------------------------
+            cleans = kwargs["cleans"]
+            starts = kwargs["starts"]
+            
+            with torch.no_grad():
+                clean_model_output = self.clean_base_model.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
+                    return_dict=True,
+                )
+                
+            hidden_states_from_layers = base_model_output.hidden_states[1:]
+            clean_states_from_layers = clean_model_output.hidden_states[1:]
+            
+            batch_size, seq_len, _ = hidden_states_from_layers[0].shape
+
+            indices = torch.arange(seq_len, device=cleans.device).unsqueeze(0).expand(batch_size, -1)
+            mask = (indices >= cleans.unsqueeze(1)) & (indices < starts.unsqueeze(1) - 1)
+            auxilary_losses = []
+            
+            
+            for layer_hidden_state, layer_clean_hidden_state in zip(hidden_states_from_layers, clean_states_from_layers):
+                
+                hiddens_per_layer = layer_hidden_state[mask]
+                clean_hiddens_per_layer = layer_clean_hidden_state[mask]
+                l2_per_token = torch.norm(hiddens_per_layer - clean_hiddens_per_layer, p=2, dim=-1)
+                layer_loss = l2_per_token.mean()
+                auxilary_losses.append(layer_loss)
+
+            auxilary_loss = torch.stack(auxilary_losses).mean()
+            # ------------------------------------
+            
+            # Cleanup
+            del clean_model_output, hidden_states_from_layers, clean_states_from_layers, auxilary_losses, layer_hidden_state, layer_clean_hidden_state
+
         return {
                 "logits": logits,
                 "math_logits": math_logits,
-                "last_hidden_state":last_hidden_state
+                "last_hidden_state":last_hidden_state,
+                "auxilary_loss": auxilary_loss 
             }
         
     @torch.no_grad()
@@ -183,7 +227,7 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         return {
             "simple_talk": simple_talk,
-            "math_text": hiddens[-1] 
+            "math_text": hiddens[-1] if hiddens else None
         }
     
 
@@ -235,13 +279,17 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         max_len = padded_hiddens.size(1)
         indices = torch.arange(max_len, device=last_hidden_state.device).expand(len(hidden_slices), -1)
-        attention_mask = (indices < math_lengths.unsqueeze(1)).long()
+        
+        # to generate math answer we allow the translator to use all simple talk tokens
+        simple_talk_attention_mask = (indices < (ends - starts).unsqueeze(1)).long()
+        # hovewer to calculate loss we use only math reasonongs lengths
+        math_attention_mask = (indices < math_lengths.unsqueeze(1)).long()
 
-        extended_attention_mask = attention_mask[:, None, None, :]
+        extended_attention_mask = simple_talk_attention_mask[:, None, None, :]
         extended_attention_mask = extended_attention_mask.to(dtype=self.base_model.dtype)
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(extended_attention_mask.dtype).min
         
-        return padded_hiddens, extended_attention_mask, attention_mask.bool()
+        return padded_hiddens, extended_attention_mask, math_attention_mask.bool()
     
     def save_pretrained(self, save_directory: str):
         
