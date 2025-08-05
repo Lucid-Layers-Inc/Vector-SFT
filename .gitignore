@@ -109,3 +109,9 @@ venv/
 env/
 .env/
 VectorSFT-checkpoints-test/
+
+# User-specified ignores
+checkpoint-*/
+собранный-чекпоинт/
+Untitled1.ipynb
+*.log

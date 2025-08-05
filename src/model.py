@@ -147,6 +147,7 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         # 1. Initial generation and 'last_hidden_state' extraction for the case of simple talk with delimeters
         simple_talk = self._generate_text(tokenizer, prompt, **generation_kwargs)
+        #simple_talk = """  The concept of information is a fundamental aspect of information theory, which was first introduced by Claude Shannon in 1948. It is based on the idea that information can be represented as a discrete variable, which can take on a finite number of values. The concept of information is often associated with entropy, which measures the amount of uncertainty or randomness in a system. In information theory, information is quantified using the concept of entropy, which is typically denoted by the symbol H. The entropy of a random variable is a measure of the amount of uncertainty or randomness in the variable. The concept of information theory has been widely used in many fields, including computer science, engineering, and economics. It has also been used in many areas of science, such as physics, biology, and sociology. The concept of information theory has been influential in shaping our understanding of the fundamental nature of information and its role in the universe."""
         prompt_with_simple_talk = prompt + '<simple_talk>' + simple_talk + '</simple_talk>'
         inputs = tokenizer(prompt_with_simple_talk, return_tensors="pt").to(self.device)
         forward_outputs = self.forward(input_ids=inputs["input_ids"])
@@ -235,13 +236,17 @@ class ModelWithAuxiliaryHead(nn.Module):
 
         max_len = padded_hiddens.size(1)
         indices = torch.arange(max_len, device=last_hidden_state.device).expand(len(hidden_slices), -1)
-        attention_mask = (indices < math_lengths.unsqueeze(1)).long()
+        
+        # to generate math answer we allow the translator to use all simple talk tokens
+        simple_talk_attention_mask = (indices < (ends - starts).unsqueeze(1)).long()
+        # hovewer to calculate loss we use only math reasonongs lengths
+        math_attention_mask = (indices < math_lengths.unsqueeze(1)).long()
 
-        extended_attention_mask = attention_mask[:, None, None, :]
+        extended_attention_mask = simple_talk_attention_mask[:, None, None, :]
         extended_attention_mask = extended_attention_mask.to(dtype=self.base_model.dtype)
         extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(extended_attention_mask.dtype).min
         
-        return padded_hiddens, extended_attention_mask, attention_mask.bool()
+        return padded_hiddens, extended_attention_mask, math_attention_mask.bool()
     
     def save_pretrained(self, save_directory: str):
         
