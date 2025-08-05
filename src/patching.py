@@ -7,7 +7,7 @@ def get_clean_kv_cache(tokenizer, instruction_prompt, device):
     clean_model = AutoModelForCausalLM.from_pretrained(
         "ExplosionNuclear/Llama-2.3-3B-Instruct-special",
         torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2"
+        #attn_implementation="flash_attention_2"
     ).to(device)
     clean_model.eval()
 
@@ -88,6 +88,10 @@ class KVPatcher:
 
             clean_k = self.clean_kv_cache['k'][i]
             clean_v = self.clean_kv_cache['v'][i]
+
+            #print(f'layer {i} \n') 
+            #print('original k: \n')
+            #print(clean_k[:, self.patch_slice, 0:5])
             
             k_hook = create_kv_patching_hook(clean_k, self.patch_slice)
             k_handle = layer.self_attn.k_proj.register_forward_hook(k_hook)
