@@ -54,7 +54,7 @@ tokenizer = AutoTokenizer.from_pretrained(base_model_name)
 
 from datasets import load_dataset
 data = load_dataset("ExplosionNuclear/ExpNew7c")
-q = 14278
+q = 14728
 prompt = data["train"][q]["question"]
 begin_LE = data["train"][q]["L_tokens"]
 
@@ -96,7 +96,7 @@ print(f"Captured K/V cache for {len(clean_kv_cache['k'])} layers.")
 patch_input_ids = tokenizer(prompt, return_tensors="pt").input_ids
 prompt_len = patch_input_ids.shape[1]
 
-patch_slice = slice(begin_LE, prompt_len-1)
+patch_slice = slice(prompt_len-1, prompt_len)
 print(f"\n--- Activating K/V patching for generation on slice: {patch_slice} ---")
 
 
