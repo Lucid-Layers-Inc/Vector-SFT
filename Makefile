@@ -58,3 +58,41 @@ craken:
 
 test_craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
+
+# DeepSpeed training commands with config files
+craken_ds1:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero1_config.yaml vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+craken_ds2:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero2_config.yaml vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+craken_ds3:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero3_config.yaml vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+test_craken_ds1:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero1_config.yaml vector_sft_train.py configs/vector_sft/test.yaml
+
+test_craken_ds2:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero2_config.yaml vector_sft_train.py configs/vector_sft/test.yaml
+
+test_craken_ds3:
+	accelerate launch --config_file configs/accelerate/deepspeed_zero3_config.yaml vector_sft_train.py configs/vector_sft/test.yaml
+
+# DeepSpeed training commands with auto GPU detection (no config files needed)
+craken_ds1_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero1_config.json vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+craken_ds2_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero2_config.json vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+craken_ds3_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero3_config.json vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+
+test_craken_ds1_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero1_config.json vector_sft_train.py configs/vector_sft/test.yaml
+
+test_craken_ds2_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero2_config.json vector_sft_train.py configs/vector_sft/test.yaml
+
+test_craken_ds3_auto:
+	accelerate launch --mixed_precision=bf16 --deepspeed_config_file=configs/deepspeed/ds_zero3_config.json vector_sft_train.py configs/vector_sft/test.yaml
