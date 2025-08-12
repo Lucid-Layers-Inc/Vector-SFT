@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
 from typing import Dict, Optional
-import os
 import copy
 from transformers import LlamaConfig, PreTrainedModel
-from peft import PeftModel  # type: ignore
+from peft import PeftModel
 
 from transformers.models.llama.modeling_llama import LlamaMLP
+from src.common.model import RecoverableModel
 
 
-class Translator(nn.Module):
+class Translator(RecoverableModel):
     weight_path = "custom_trained_weights.pt"    
     
     def __init__(self, config: LlamaConfig, rank: int | None = None):
@@ -27,14 +27,6 @@ class Translator(nn.Module):
     def forward(self, math_hidden_states):
         return self.mlp(math_hidden_states)
     
-    def save_pretrained(self, save_directory: str):
-        custom_state_dict = self.state_dict()
-        torch.save(custom_state_dict, os.path.join(save_directory, self.weight_path))
-
-    def load_pretrained(self, checkpoint_path: str):
-        custom_weights_path = os.path.join(checkpoint_path, self.weight_path)
-        custom_state_dict = torch.load(custom_weights_path, map_location='cpu')
-        self.load_state_dict(custom_state_dict)
     
     
 class ModelWithAuxiliaryHead(nn.Module):
