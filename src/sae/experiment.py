@@ -1,8 +1,6 @@
 import os
-from glob import glob
 
 import torch
-from safetensors.torch import load_file
 from transformers import AutoTokenizer, AutoModelForCausalLM, PreTrainedTokenizer, PreTrainedModel
 
 from src.sae.model import SAE
