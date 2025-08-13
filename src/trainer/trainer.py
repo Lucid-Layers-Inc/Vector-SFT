@@ -11,7 +11,7 @@ from src.trainer.abstracts import EvaluatorMixin, WeightLoaderMixin
 
         
 class VectorSFTTrainer(EvaluatorMixin, WeightLoaderMixin, SFTTrainer):
-    def __init__(self, *args, dataset_processor: DatasetProcessor, betas: Betas, **kwargs):
+    def __init__(self, *args, dataset_processor: DatasetProcessor, betas: Betas = Betas(), **kwargs):
         super().__init__(*args, **kwargs)
         self.dataset_processor = dataset_processor
         self.betas = betas

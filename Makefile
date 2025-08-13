@@ -58,3 +58,6 @@ craken:
 
 test_craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
+
+test_sae:
+	python sae_train.py configs/vector_sft/test_sae.yaml

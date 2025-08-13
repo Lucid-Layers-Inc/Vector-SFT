@@ -2,7 +2,7 @@ import os
 
 from transformers import TrainingArguments, TrainerState, TrainerControl, TrainerCallback, PreTrainedTokenizer
 from transformers.utils import logging
-from huggingface_hub import upload_file
+from huggingface_hub import upload_file, upload_folder
 from omegaconf import DictConfig
 
 from src.model import ModelWithAuxiliaryHead
@@ -38,6 +38,26 @@ class SaveCustomWeightsOnHubCallback(TrainerCallback):
                 repo_type="model",
                 commit_message=f"Upload custom weights for step {state.global_step}",
             )
+
+
+class SaveFolderOnHubCallback(TrainerCallback):
+    """
+    Callback to save specific folder to the Hub.
+    """
+    
+    def on_save(self, args: TrainingArguments, state: TrainerState, control: TrainerControl, **kwargs):
+
+        if args.push_to_hub and state.is_world_process_zero and args.hub_model_id:
+            checkpoint_folder = os.path.join(args.output_dir, f"checkpoint-{state.global_step}")
+            print(f"Uploading folder {checkpoint_folder} to the Hub")
+            upload_folder(
+                repo_id=args.hub_model_id,
+                folder_path=checkpoint_folder,
+                path_in_repo=f"checkpoint-{state.global_step}",
+                repo_type="model",
+                commit_message=f"Upload checkpoint {state.global_step}"
+                )
+            print(f"Folder {checkpoint_folder} uploaded to the Hub")
 
 
 class GenerationCallback(TrainerCallback):

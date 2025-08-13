@@ -1,7 +1,8 @@
 project:
-  name: "Experiment-test"
-  experiment_name: "linear-systems"
-  hf_checkpoint: "ExplosionNuclear/Experiment-test"
+  name: "SAE"
+  experiment_name: "linear-systems-sae"
+  hf_checkpoint: "ExplosionNuclear/SAE-linear-systems"
+  # hf_checkpoint: "Lucid-Layers-Inc/SAE-linear-systems"
 
 clearml:
   project_name: ${project.name}
@@ -10,17 +11,15 @@ clearml:
 
 dataset:
   name: "ExplosionNuclear/ExpNew7"
-  train_size: 10
-  eval_size: 15
+  train_size: 12500
+  eval_size: 2000
   max_length: 800
 
-
 calibration_dataset:
-  name: "ExplosionNuclear/simple_talks"
+  name: "ExplosionNuclear/new_simple_talks"
 
-calib_prob: 0.1
+calib_prob: 0.0
 
-  
 generation:
   prompts:
     instruction_prompts:
@@ -32,68 +31,46 @@ generation:
       - "Talk about the Moon. No more then 7 sentences."
 
   generation_params:
-    max_new_tokens: 400
+    max_new_tokens: 300
     do_sample: False
-    temperature: 0
-    # top_p: 0.9  
 
 model:
   name: ExplosionNuclear/Llama-2.3-3B-Instruct-special
   dtype: "bfloat16"
-  device_map: "cuda:0"
+  device_map: "cuda"
   attn_implementation: "flash_attention_2"
 
-auxiliary:
-  N_max: 300 
-  num_segments: 5
-  segments_rank: 2
-
-
-betas:
-  beta_1: 0.5
-  beta_2: 0.5
-  beta_3: 2
-
-peft:
-  r: 2
-  lora_alpha: 16
-  lora_dropout: 0.05
-  bias: "lora_only"
-  task_type: "CAUSAL_LM"
-  use_rslora: false
-  target_modules:
-    - "q_proj"
-    - "k_proj"
-    - "v_proj"
-    - "gate_proj"
-    - "up_proj"
-    - "down_proj"
-    - "o_proj"
-
-resume_from_checkpoint: "./VectorSFT-checkpoints-test/checkpoint-4"
+resume_from_checkpoint: null
 
 trainer:
-  output_dir: "./VectorSFT-checkpoints-test"
-  num_train_epochs: 1
+  output_dir: "./SAE-checkpoints"
+  num_train_epochs: 12
   per_device_train_batch_size: 2
-  per_device_eval_batch_size: 2
   gradient_accumulation_steps: 2
   learning_rate: 3e-4
   weight_decay: 0.01
   lr_scheduler_type: "linear"
-  warmup_steps: 3
-  logging_steps: 2
-  save_steps: 30
+  warmup_steps: 100
+  logging_steps: 10
+  save_steps: 10000
   bf16: true
-  tf32: true
+  tf32: false
   gradient_checkpointing: false
   optim: "adamw_torch"
-  report_to: "clearml"
+  report_to: "none"
   max_grad_norm: 0.3
-  ddp_find_unused_parameters: false
+  ddp_find_unused_parameters: true
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
-  eval_strategy: "epoch"
+  # eval_strategy: "epoch"
   remove_unused_columns: false
   dataset_kwargs:
     skip_prepare_dataset: true
+
+# SAE-specific hyperparameters used by SAETrainer
+sae:
+  latent_size: 4096     
+  lambda_sae: 1.0       
+  l1_coeff: 1.0e-3      
+
+
