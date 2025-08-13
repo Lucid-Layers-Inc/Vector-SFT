@@ -6,6 +6,7 @@ from torch.nn.functional import mse_loss
 from datasets import Dataset
 from transformers.trainer import EvalLoopOutput
 from trl import SFTTrainer
+from torch.nn.utils import clip_grad_norm_
 
 from src.sae.model import SAE
 from src.sae.preservers import save_saes_safetensors
@@ -75,6 +76,16 @@ class SAETrainer(VectorSFTTrainer):  # ваш класс с тем же имен
             self.sae_params, lr=self.args.learning_rate, weight_decay=self.args.weight_decay
         )
         return self.optimizer
+    
+    def optimizer_step(self, *args, **kwargs):
+        if getattr(self, "sae_params", None) is not None:
+            max_gn = getattr(self.args, "max_grad_norm", None)
+            if max_gn and max_gn > 0:
+                clip_grad_norm_(self.sae_params, max_gn)
+        return super().optimizer_step(*args, **kwargs)
+    
+    def sae_loss_fn(self, x_hat, x_target, latent):
+        return sae_loss_fn(x_hat, x_target, latent, l1_coeff=self.sae_cfg["l1_coeff"])
 
     def sae_loss_fn(self, x_hat, x_target, latent):
         return sae_loss_fn(x_hat, x_target, latent, l1_coeff=self.sae_cfg["l1_coeff"])	

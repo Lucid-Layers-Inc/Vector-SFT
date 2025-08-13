@@ -45,32 +45,35 @@ resume_from_checkpoint: null
 trainer:
   output_dir: "./SAE-checkpoints"
   num_train_epochs: 12
-  per_device_train_batch_size: 16
-  per_device_eval_batch_size: 16
-  gradient_accumulation_steps: 8
+  per_device_train_batch_size: 12
+  per_device_eval_batch_size: 2
+  gradient_accumulation_steps: 4
   learning_rate: 3e-4
-  weight_decay: 0.01
+  weight_decay: 0.1
   lr_scheduler_type: "linear"
   warmup_steps: 100
   logging_steps: 10
-  save_steps: 100
+  save_steps: 500
   bf16: true
   tf32: false
   gradient_checkpointing: false
   optim: "adamw_torch"
   report_to: "clearml"
-  max_grad_norm: 0.3
   ddp_find_unused_parameters: true
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
-  eval_strategy: "steps"
-  eval_steps: 30
+  # eval_strategy: "steps"
+  # eval_steps: 100
   remove_unused_columns: false
   dataset_kwargs:
     skip_prepare_dataset: true
+  save_total_limit: 2
+  max_grad_norm: 50
 
 # SAE-specific hyperparameters used by SAETrainer
 sae:
-  latent_size: 4096     
+  latent_size: 16384     
   lambda_sae: 1.0       
   l1_coeff: 1.0e-3  
+  layers: "17-27"
+  layers_index_base: 0

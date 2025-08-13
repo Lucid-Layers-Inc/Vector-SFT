@@ -9,6 +9,10 @@ class SAE(RecoverableModel):
         super().__init__()
         self.enc = nn.Linear(d_in, d_latent, bias=False)
         self.dec = nn.Linear(d_latent, d_in, bias=False)
+        
+        nn.init.kaiming_uniform_(self.enc.weight, mode='fan_in', nonlinearity='relu')
+        nn.init.kaiming_uniform_(self.dec.weight, mode='fan_in', nonlinearity='linear')
+
         self.weight_path = sae_name
         
     def forward(self, x, return_latent=False):

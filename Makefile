@@ -65,3 +65,8 @@ sae_craken:
 
 test_sae:
 	python  sae_train.py configs/vector_sft/test_sae.yaml  
+
+sheduled_sae:
+	INSTANCE_ID=$$(echo $$(cat ~/.vast_containerlabel) | grep -o '[0-9]\+'); \
+	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
+	make sae_craken
