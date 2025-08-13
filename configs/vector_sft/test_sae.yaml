@@ -10,7 +10,7 @@ clearml:
   output_uri: false
 
 dataset:
-  name: "ExplosionNuclear/ExpNew7"
+  name: "kotyKD/c4-pro-tiny"
   train_size: 12500
   eval_size: 40
   max_length: 800

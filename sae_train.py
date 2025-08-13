@@ -1,9 +1,10 @@
+from typing import List, Dict, Any
 import fire
 
 from torch.utils.data import DataLoader
 from trl import SFTConfig
 
-from src.callbacks import ClearMLCallback, SaveCustomWeightsOnHubCallback, GenerationCallback, SaveFolderOnHubCallback
+from src.callbacks import SaveFolderOnHubCallback
 from src.sae.experiment import SAEExperiment
 from src.sae.trainer import SAETrainer
 
@@ -16,6 +17,7 @@ def collate(inputs):
     return input_dict
 
 
+
 def main(config: str):
 
     experiment = SAEExperiment(config)
@@ -25,12 +27,21 @@ def main(config: str):
     
     experiment.task_init()
     
+    def plain_collate(features: List[Dict[str, Any]]):
+        full_texts = [feature["text"] for feature in features]
+        batch = experiment.tokenizer(full_texts, padding=True, return_tensors="pt")
+        return batch
+    
+    
     eval_loader_main = DataLoader(
         experiment.eval_dataset,
         batch_size = experiment.cfg.trainer.per_device_eval_batch_size,
-        shuffle = True,
-        collate_fn = experiment.dataset_processor.data_collate,   
+        shuffle = False,
+        collate_fn = plain_collate,   
     )
+    
+    experiment.mix_data_loader.collate_fn = plain_collate
+
 
 
     trainer = SAETrainer(

@@ -138,8 +138,8 @@ class DatasetProcessor(DataCollator):
         
         """Load and prepare the dataset."""
         
-        main_dataset: DatasetDict = load_dataset(self.cfg.dataset.name)  # type: ignore
-        calibration_dataset: DatasetDict = load_dataset(self.cfg.calibration_dataset.name)  # type: ignore
+        main_dataset: DatasetDict = load_dataset(self.cfg.dataset.name)
+        calibration_dataset: DatasetDict = load_dataset(self.cfg.calibration_dataset.name)
         
         train_size, eval_size = self.cfg.dataset.train_size, self.cfg.dataset.eval_size
         train_dataset, eval_dataset = self.split_datasets(main_dataset, train_size, eval_size)
