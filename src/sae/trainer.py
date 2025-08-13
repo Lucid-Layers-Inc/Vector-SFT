@@ -2,6 +2,7 @@
 from typing import Dict, Optional
 
 import torch
+from torch.nn.functional import mse_loss
 from datasets import Dataset
 from transformers.trainer import EvalLoopOutput
 from trl import SFTTrainer
@@ -13,7 +14,8 @@ from src.trainer.trainer import VectorSFTTrainer
 
 
 def sae_loss_fn(x_hat, x_target, latent, l1_coeff=1e-3):
-	return torch.nn.functional.mse_loss(x_hat, x_target) + l1_coeff * latent.abs().mean()
+    "SAE loss function"
+    return mse_loss(x_hat, x_target) + l1_coeff * latent.abs().mean()
 
 
 def make_sae_loss_hook_with_loss(sae, bucket, loss_fn, is_eval=False):
