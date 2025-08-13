@@ -59,5 +59,9 @@ craken:
 test_craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
 
+
+sae_craken:
+	python sae_train.py configs/vector_sft/llama3_2_3b_sae.yaml  # accelerate does not work due to cuda memory crash
+
 test_sae:
-	python sae_train.py configs/vector_sft/test_sae.yaml
+	python  sae_train.py configs/vector_sft/test_sae.yaml  
