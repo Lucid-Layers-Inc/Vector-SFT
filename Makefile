@@ -49,7 +49,7 @@ dump_data:
 
 
 sheduled_craken:
-	INSTANCE_ID=$$(echo $$(./vast_id.sh) | grep -o '[0-9]\+'); \
+	INSTANCE_ID=$$(echo $$(cat ~/.vast_containerlabel) | grep -o '[0-9]\+'); \
 	trap "vastai stop instance $$INSTANCE_ID" EXIT; \
 	make craken
 
@@ -57,4 +57,4 @@ craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
 
 test_craken:
-	python vector_sft_train.py configs/vector_sft/test-gpt2.yaml
+	accelerate launch vector_sft_train.py configs/vector_sft/test-gpt2.yaml
