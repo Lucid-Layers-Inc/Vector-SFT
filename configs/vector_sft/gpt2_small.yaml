@@ -97,7 +97,7 @@ trainer:
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
   eval_strategy: "steps"
-  eval_steps: 50
+  eval_steps: 100
   remove_unused_columns: false
   dataset_kwargs:
     skip_prepare_dataset: true
