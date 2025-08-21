@@ -54,7 +54,7 @@ sheduled_craken:
 	make craken
 
 craken:
-	accelerate launch vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
+	accelerate launch vector_sft_train.py configs/vector_sft/gpt2_small.yaml
 
 test_craken:
-	accelerate launch vector_sft_train.py configs/vector_sft/test-gpt2.yaml
+	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
