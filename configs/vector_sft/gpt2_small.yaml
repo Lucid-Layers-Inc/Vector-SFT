@@ -1,0 +1,102 @@
+project:
+  name: "GPT2-small"
+  experiment_name: "gpt2-small"
+  hf_checkpoint: "ExplosionNuclear/GPT2-small-BERT-modified-loss"
+
+clearml:
+  project_name: ${project.name}
+  task_name: ${project.experiment_name}
+  output_uri: false
+  reuse_last_task_id: false
+
+dataset:
+  name: "ExplosionNuclear/ExpNew7c"
+  train_size: 12500
+  eval_size: 2000
+  max_length: 800
+
+calibration_dataset:
+  name: "ExplosionNuclear/new_simple_talks"
+
+calib_prob: 0.4
+
+generation:
+  prompts:
+    instruction_prompts:
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the 6g research. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -9x - 10y = -114\n          6x - y = 30\n"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the cultural policy. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -6x + y = 1\n          7x + 3y = 28\n"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the esports. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          9x - 2y = -1\n          -9x - 2y = 17\n"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the crowd simulation. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          7x + 8y = 80\n          -3x + 9y = 3\n"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the cricket. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -x - 9y = 82\n          -5x + y = 42\n"
+      - "**Engage Parallel Processing Mode:**\n\n    You will be presented with a dual task: doing simple talk on some topic while simultaneously solving a 'secret' math problem. \n    You are to reveal only a some percent of your final reasoning related to the math problem after finishing simple talk.\n\n    **Here's your specific task:**\n\n    1.  Talk about the crocheting. No more then 7 sentences.\n\n    2.  Simultaneously solve the following system of linear equations for x: \n\n          -8x - 2y = 46\n          x - y = -2\n"
+    general_prompts:
+      - "Talk about quantum gravitation. No more then 7 sentences."
+      - "Talk about the Moon. No more then 7 sentences."
+
+  generation_params:
+    max_new_tokens: 300
+    do_sample: False
+     
+
+
+
+model:
+  name: ExplosionNuclear/alias-gpt2-small-x21-special
+  dtype: "float32"
+  device_map: "cuda"
+  attn_implementation: null
+
+
+auxiliary:
+  N_max: 300 
+  num_segments: 20
+  bert_hidden_size: 768
+  bert_mlp_size: 3072
+  num_attention_heads: 12
+
+
+betas:
+  beta_0: 0.05
+  beta_1: 0.3
+  beta_2: 0.7
+  beta_3: 2
+
+peft:
+  r: 128
+  lora_alpha: 128
+  lora_dropout: 0.05
+  bias: "lora_only"
+  task_type: "CAUSAL_LM"
+  use_rslora: false
+  target_modules:
+    - "c_attn"
+    - "c_proj"
+    - "c_fc"
+
+resume_from_checkpoint: null
+
+trainer:
+  output_dir: "./small-gpt2-checkpoints"
+  num_train_epochs: 1
+  per_device_train_batch_size: 64
+  gradient_accumulation_steps: 2
+  learning_rate: 3e-4
+  weight_decay: 0.01
+  lr_scheduler_type: "linear"
+  warmup_steps: 3
+  logging_steps: 2
+  save_steps: 10
+  bf16: false
+  fp16: true
+  tf32: true
+  gradient_checkpointing: false
+  optim: "adamw_torch"
+  report_to: none
+  max_grad_norm: 0.3
+  ddp_find_unused_parameters: false
+  push_to_hub: true
+  hub_model_id: ${project.hf_checkpoint}
+  eval_strategy: "epoch"
+  remove_unused_columns: false
+  dataset_kwargs:
+    skip_prepare_dataset: true

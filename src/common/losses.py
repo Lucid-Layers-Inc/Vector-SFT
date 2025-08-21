@@ -41,11 +41,10 @@ def calculate_all_main_losses(
     simple_talk_loss, final_answer_loss = compute_simple_and_final_answer_loss(
         outputs["logits"], inputs["input_ids"], inputs["attention_mask"], inputs["starts"], inputs["ends"]
     )
-    
+    outputs["auxilary_loss"] = outputs["auxilary_loss"].mean()  # there is a bug in the auxilary loss calculation - sometimes, it returns twice the value of the losses
     math_loss = compute_math_loss(outputs["math_logits"], inputs["math_labels"], inputs["math_attention_mask"])
-    # --------------------------------
-    total_loss = betas.beta_0*outputs["auxilary_loss"] + betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
-
+    total_loss = betas.beta_0 * outputs["auxilary_loss"] + betas.beta_1 * math_loss + betas.beta_2 * simple_talk_loss + betas.beta_3 * final_answer_loss
+    
     return {
         "total_loss": total_loss,
         "math_loss": math_loss,

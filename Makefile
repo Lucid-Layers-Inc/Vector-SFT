@@ -57,4 +57,4 @@ craken:
 	accelerate launch vector_sft_train.py configs/vector_sft/llama3_2_3b_custom.yaml
 
 test_craken:
-	accelerate launch vector_sft_train.py configs/vector_sft/test.yaml
+	python vector_sft_train.py configs/vector_sft/test-gpt2.yaml

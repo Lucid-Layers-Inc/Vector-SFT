@@ -3,10 +3,11 @@ import torch.nn as nn
 from typing import Dict, Optional
 import os
 import copy
-from transformers import LlamaConfig, PreTrainedModel
+from transformers import GPT2LMHeadModel, LlamaConfig, PreTrainedModel
 from transformers.models.bert.modeling_bert import BertLayer
 from transformers import BertConfig
-from peft import PeftModel  
+from peft import PeftModel
+from transformers.models.gpt2.modeling_gpt2 import CausalLMOutputWithCrossAttentions  
 
 
 class Translator(nn.Module):
@@ -89,7 +90,7 @@ class ModelWithAuxiliaryHead(nn.Module):
     
     def forward(
             self,
-            input_ids: Optional[torch.LongTensor],
+            input_ids: torch.LongTensor,
             attention_mask: Optional[torch.Tensor] = None,
             **kwargs
         ):
@@ -97,15 +98,19 @@ class ModelWithAuxiliaryHead(nn.Module):
         # Get the original transformers model from the PeftModel wrapper. It contains the LoRA layers.
         modified_base_model = self.base_model.get_base_model() # debug_model_structure.py confirms that this contains lora
 
-        # This call goes through the LoRA layers.
-        base_model_output = modified_base_model.model(
+        inputs = dict(
             input_ids=input_ids,
             attention_mask=attention_mask,
             output_hidden_states=True,
-            return_dict=True,
+            return_dict=True
         )
-
-        last_hidden_state = base_model_output.last_hidden_state
+        if isinstance(modified_base_model, GPT2LMHeadModel):
+            base_model_output: CausalLMOutputWithCrossAttentions = modified_base_model.transformer(**inputs)
+            last_hidden_state = base_model_output["last_hidden_state"]
+        else:
+            base_model_output = modified_base_model.model(**inputs)
+            last_hidden_state = base_model_output.last_hidden_state
+        
         logits = self.lm_head(last_hidden_state)
         math_logits = None
         auxilary_loss = None
@@ -122,12 +127,11 @@ class ModelWithAuxiliaryHead(nn.Module):
             starts = kwargs["starts"]
             
             with torch.no_grad():
-                clean_model_output = self.clean_base_model.model(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
-                    return_dict=True,
-                )
+                if isinstance(self.clean_base_model, GPT2LMHeadModel):
+                    clean_model_output: CausalLMOutputWithCrossAttentions = self.clean_base_model.transformer(**inputs)
+                else:
+                    clean_model_output = self.clean_base_model.model(**inputs)
+                
                 
             hidden_states_from_layers = base_model_output.hidden_states[1:]
             clean_states_from_layers = clean_model_output.hidden_states[1:]
@@ -147,8 +151,7 @@ class ModelWithAuxiliaryHead(nn.Module):
                 layer_loss = l2_per_token.mean()
                 auxilary_losses.append(layer_loss)
 
-            auxilary_loss = torch.stack(auxilary_losses).mean()
-            # ------------------------------------
+            auxilary_loss = torch.tensor(auxilary_losses, device=input_ids.device).mean()
             
             # Cleanup
             del clean_model_output, hidden_states_from_layers, clean_states_from_layers, auxilary_losses, layer_hidden_state, layer_clean_hidden_state

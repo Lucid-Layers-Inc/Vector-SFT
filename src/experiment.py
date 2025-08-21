@@ -183,12 +183,14 @@ class SFTExperiment(Experiment):
     def prepare_model_and_tokenizer(self) -> tuple[PreTrainedModel, PreTrainedTokenizer]:
                 
         tokenizer = AutoTokenizer.from_pretrained(self.cfg.model.name)
-        base_model = AutoModelForCausalLM.from_pretrained(
-            self.cfg.model.name,
+        model_kwargs = dict(
             torch_dtype=getattr(torch, self.cfg.model.dtype),
-            device_map=self.cfg.model.device_map,
-            attn_implementation=self.cfg.model.attn_implementation,
-        )
+            device_map=self.cfg.model.device_map
+            )
+        if getattr(self.cfg.model, "attn_implementation", None) is not None:
+            model_kwargs["attn_implementation"] = self.cfg.model.attn_implementation
+        
+        base_model = AutoModelForCausalLM.from_pretrained(self.cfg.model.name, **model_kwargs)
 
         return base_model, tokenizer
     
