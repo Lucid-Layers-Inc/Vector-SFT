@@ -257,8 +257,7 @@ class ModelWithAuxiliaryHead(nn.Module):
                 
                 math_hidden_states = last_hidden_state[start_idx: end_idx + 1]
                 
-                if math_hidden_states.dtype == torch.float32:
-                    math_hidden_states = math_hidden_states.to(torch.bfloat16)
+                math_hidden_states = math_hidden_states.to(torch.bfloat16)
 
      
                 math_hiddens = self.translator(math_hidden_states.unsqueeze(0)).squeeze(0)

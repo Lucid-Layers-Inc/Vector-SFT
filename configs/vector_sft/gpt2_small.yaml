@@ -85,7 +85,7 @@ trainer:
   lr_scheduler_type: "linear"
   warmup_steps: 3
   logging_steps: 2
-  save_steps: 10
+  save_steps: 100
   bf16: false
   fp16: true
   tf32: true
@@ -96,7 +96,8 @@ trainer:
   ddp_find_unused_parameters: false
   push_to_hub: true
   hub_model_id: ${project.hf_checkpoint}
-  eval_strategy: "epoch"
+  eval_strategy: "steps"
+  eval_steps: 50
   remove_unused_columns: false
   dataset_kwargs:
     skip_prepare_dataset: true

@@ -235,13 +235,13 @@ class SFTExperiment(Experiment):
 
         # Create auxiliary head model
         self.model = ModelWithAuxiliaryHead(
-                base_model=self.lora_wrapped,
-                clean_base_model=clean_base_model,
-                lm_head=lm_head,
-                bert_mlp_size=self.cfg.auxiliary.bert_mlp_size,
-                num_attention_heads=self.cfg.auxiliary.num_attention_heads,
-                bert_hidden_size=self.cfg.auxiliary.bert_hidden_size
-            )
+            base_model=self.lora_wrapped,
+            clean_base_model=clean_base_model,
+            lm_head=lm_head,
+            bert_mlp_size=self.cfg.auxiliary.bert_mlp_size,
+            num_attention_heads=self.cfg.auxiliary.num_attention_heads,
+            bert_hidden_size=self.cfg.auxiliary.bert_hidden_size
+        )
         self.add_translator_to_model()
         
 
