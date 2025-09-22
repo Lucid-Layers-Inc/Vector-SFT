@@ -159,13 +159,6 @@ If you use this code in your research, please cite:
 }
 ```
 
-## License
-
-[Add your license information here]
-
-## Contributing
-
-[Add contribution guidelines here]
 
 
 
