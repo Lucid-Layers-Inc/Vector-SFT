@@ -55,10 +55,32 @@ Training uses the **ExplosionNuclear/ExpNew7** dataset on Hugging Face, containi
 
 ## Installation
 
+### Using Docker (Recommended)
+
+```bash
+git clone <repository-url>
+cd Vector-SFT
+make run
+```
+
+### Alternative: Direct Installation
+
 ```bash
 git clone <repository-url>
 cd Vector-SFT
 pip install -r requirements.txt
+```
+
+### Additional Setup
+
+For training experiments:
+```bash
+make create_env  # Then fill in ClearML and HuggingFace credentials
+```
+
+For Jupyter notebook access:
+```bash
+make jupyter
 ```
 
 ## Usage
