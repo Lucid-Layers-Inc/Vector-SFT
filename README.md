@@ -146,18 +146,7 @@ A separate branch contains **activation patching** analysis implementation for i
 - `linear-translator` - Linear-based Translator implementation
 - `activation-patching` - Activation patching analysis tools
 
-## Citation
 
-If you use this code in your research, please cite:
-
-```bibtex
-@article{shirokov2025steganography,
-  title={Steganography via internal activations is already possible in small language models},
-  author={Shirokov, Ilia and Nachevsky, Ilya},
-  journal={LessWrong},
-  year={2025}
-}
-```
 
 
 
